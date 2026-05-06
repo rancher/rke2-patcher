@@ -2,7 +2,7 @@
 
 `rke2-patcher` is a small CLI to inspect and patch RKE2 component images.
 
-> **Note:** `rke2-patcher` requires RKE2 Prime clusters with `prime: true` enabled in the RKE2 configuration.
+> **Note:** `rke2-patcher` requires RKE2 Prime clusters with `prime: true` enabled in the RKE2 configuration, and is supported starting with the RKE2 March 2026 releases.
 
 ## Build
 
@@ -115,11 +115,15 @@ rke2-patcher image-list rke2-traefik --with-cves --verbose
 ```
 
 - Lists release tags from the configured registry for the selected component repository, ordered newest-first (higher build date first), with current and previous tags included.
+- Applies the same 45-day patch-window policy used by `image-patch`:
+  - `eligible tags`: can be patched on the current cluster
+  - `newer tags requiring RKE2 upgrade`: visible, but blocked until the cluster is upgraded
 - Filters out non-release signature/attestation tags (for example `sha256-...*.sig` and `sha256-...*.att`) from `image-list` output.
 - Highlights tags currently in use by running pods as `"<-- in use"` when cluster access is available.
 - With `--with-cves`, prints a compact table with columns: `TAG`, `STATUS`, `CVE COUNT`, and `VULNERABILITIES`.
-- CVEs are collected for: the current image tag, the previous image tag, and all newer available tags.
-- `--with-cves` runs a single in-cluster Trivy job that scans all selected images.
+- CVEs are collected for: the current image tag, the previous image tag, and newer tags that are still within the 45-day patch window.
+- `--with-cves` runs a single in-cluster Trivy job that scans all selected eligible images.
+- If newer tags are outside the patch window, the command reports them as requiring an RKE2 upgrade and skips scanning them.
 - If that batch cluster scan fails, the command fails (no per-image fallback path).
 - By default, the vulnerability list is truncated for readability.
 - Use `--verbose` with `--with-cves` to show the full vulnerability list.
@@ -140,10 +144,12 @@ rke2-patcher image-patch rke2-traefik --yes
 
 - Detects the current running image repository in-cluster.
 - Picks the next newer tag from `registry.rancher.com` and applies a `HelmChartConfig` object with that tag via the Kubernetes API.
+- Enforces a 45-day patch window relative to the cluster "zero-day" date, derived from the running kube-apiserver image tag (`rancher/hardened-kubernetes`) build date.
+- If a candidate target tag is outside that 45-day window, patching is refused and the user is instructed to upgrade RKE2 first.
+- `rke2-ingress-nginx` is exempt from this date-window check.
 - With `--dry-run`, prints the exact `HelmChartConfig` that would be applied and does not update cluster state.
 - Refuses to patch when current tag is already the newest available tag.
 - Refuses to patch when the target tag would move to a newer minor release.
-- Refuses to patch when the same component was already patched forward once for the current detected RKE2 version.
 - Refuses to patch when any stale patch state from a different RKE2 version still exists. In that case, run `rke2-patcher image-reconcile <component>` for each previously patched component before patching again.
 - If one or more `HelmChartConfig` objects already exist in the cluster for the same chart name and namespace, asks for confirmation before attempting a merge.
 - If merge is approved, prints the merged output in dry-run format and asks for a second confirmation before writing.

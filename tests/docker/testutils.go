@@ -664,6 +664,7 @@ func (config *TestConfig) RunImagePatch(component string, dryRun bool) (string, 
 	if err != nil {
 		return out, fmt.Errorf("image-patch failed for %s: %w", component, err)
 	}
+	fmt.Printf("[docker-tests] rke2-patcher output=%s\n", out)
 	return out, nil
 }
 
@@ -745,6 +746,7 @@ func (config *TestConfig) GetRunningImageTag(namespace, workloadKind, workloadNa
 	if err != nil {
 		return "", fmt.Errorf("failed to get images for %s/%s: %w", workloadKind, workloadName, err)
 	}
+
 	for _, img := range strings.Fields(out) {
 		if strings.Contains(img, repository) {
 			parts := strings.SplitN(img, ":", 2)

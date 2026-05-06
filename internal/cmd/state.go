@@ -43,14 +43,18 @@ func generateStateWrite(componentName string, currentTag string, targetTag strin
 	}
 
 	entryKey := clusterVersion + "|" + componentName
+	baselineTag := currentTag
 	if existing, found := state.Entries[entryKey]; found {
-		return patchStateWrite{}, fmt.Errorf("refusing to patch: component %q was already patched once for RKE2 %s (baseline: %q, patched-to: %q); upgrade RKE2 to patch again", componentName, clusterVersion, existing.BaselineTag, existing.PatchedToTag)
+		// Keep the first observed baseline tag for this cluster version.
+		if strings.TrimSpace(existing.BaselineTag) != "" {
+			baselineTag = existing.BaselineTag
+		}
 	}
 
 	entry := patchEntry{
 		Component:              componentName,
 		ClusterVersion:         clusterVersion,
-		BaselineTag:            currentTag,
+		BaselineTag:            baselineTag,
 		PatchedToTag:           targetTag,
 		GeneratedValuesContent: generatedValuesContent,
 	}
@@ -85,7 +89,9 @@ func persistPatchDecision(decision patchStateWrite) error {
 				return nil
 			}
 
-			return fmt.Errorf("component %q is already recorded as patched once for RKE2 %s", existing.Component, existing.ClusterVersion)
+			if strings.TrimSpace(existing.BaselineTag) != "" {
+				decision.Entry.BaselineTag = existing.BaselineTag
+			}
 		}
 
 		state.Entries[decision.EntryName] = decision.Entry

@@ -132,7 +132,7 @@ var _ = Describe("Airgap environment", Ordered, func() {
 				output, err := tc.RunImageList(component, false)
 				Expect(err).NotTo(HaveOccurred(), output)
 				Expect(output).To(ContainSubstring("component: "+component), output)
-				Expect(output).To(ContainSubstring("available tags ("), output)
+				Expect(output).To(ContainSubstring("eligible tags ("), output)
 			})
 		}
 	})

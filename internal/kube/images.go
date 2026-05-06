@@ -18,6 +18,32 @@ type PodImageSummary struct {
 	Count int
 }
 
+// FindRunningImageByRepository returns the single running image matching repository
+// in the namespace/selector scope.
+func FindRunningImageByRepository(namespace string, selector string, repository string) (string, error) {
+	images, err := collectRunningImagesByRepository(namespace, selector, repository)
+	if err != nil {
+		return "", err
+	}
+
+	if len(images) > 1 {
+		observed := make([]string, 0, len(images))
+		for _, image := range images {
+			observed = append(observed, fmt.Sprintf("%s (pods: %d)", image.Image, image.Count))
+		}
+
+		return "", fmt.Errorf(
+			"multiple running images found for repository %q in namespace %q (selector: %q): %s; this usually means an upgrade is in progress, wait a couple of minutes and try again",
+			repository,
+			namespace,
+			selector,
+			strings.Join(observed, ", "),
+		)
+	}
+
+	return images[0].Image, nil
+}
+
 // ListRunningImages lists the images used by the running pods of a component (e.g. different versions during an upgrade)
 func ListRunningImages(componentWorkload components.WorkloadRef, componentRepository string) ([]PodImageSummary, error) {
 	clientset, err := ClientsetProvider()
@@ -25,18 +51,32 @@ func ListRunningImages(componentWorkload components.WorkloadRef, componentReposi
 		return nil, err
 	}
 
-	// Counts the number of occurences of each image (e.g. different versions)
-	counts := make(map[string]int)
-
 	selector, selectorErr := workloadSelector(clientset, componentWorkload.Kind, componentWorkload.Namespace, componentWorkload.Name)
 	if selectorErr != nil {
 		return nil, selectorErr
 	}
 
+	images, err := collectRunningImagesByRepository(componentWorkload.Namespace, selector, componentRepository)
+	if err != nil {
+		return nil, err
+	}
+
+	return images, nil
+}
+
+func collectRunningImagesByRepository(namespace string, selector string, componentRepository string) ([]PodImageSummary, error) {
+	clientset, err := ClientsetProvider()
+	if err != nil {
+		return nil, err
+	}
+
+	// Counts the number of occurrences of each image (e.g. different versions)
+	counts := make(map[string]int)
+
 	// In case there are more than 500 pods in the cluster we paginate results with continueToken
 	continueToken := ""
 	for {
-		list, listErr := listPods(clientset, componentWorkload.Namespace, selector, continueToken)
+		list, listErr := listPods(clientset, namespace, selector, continueToken)
 		if listErr != nil {
 			return nil, listErr
 		}
@@ -65,9 +105,9 @@ func ListRunningImages(componentWorkload components.WorkloadRef, componentReposi
 		continueToken = list.Continue
 	}
 
-	checked := fmt.Sprintf("%s/%s/%s", componentWorkload.Kind, componentWorkload.Namespace, componentWorkload.Name)
+	checked := fmt.Sprintf("%s/%s", namespace, selector)
 	if len(counts) == 0 {
-		return nil, fmt.Errorf("no running image found in configured workload for repository %q (checked: %s)", componentRepository, checked)
+		return nil, fmt.Errorf("no running image found for repository %q (checked: %s)", componentRepository, checked)
 	}
 
 	images := make([]PodImageSummary, 0, len(counts))

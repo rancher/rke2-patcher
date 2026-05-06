@@ -11,7 +11,7 @@ import (
 	cli "github.com/urfave/cli/v2"
 )
 
-const version = "1.1.3"
+const version = "1.1.4"
 const usageExitCode = 2
 
 var clusterVersionResolver = kube.ClusterVersion

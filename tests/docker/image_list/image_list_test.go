@@ -48,7 +48,7 @@ var _ = Describe("Flannel and Traefik image-list", Ordered, func() {
 			output, err := tc.RunImageList("rke2-traefik", false)
 			Expect(err).NotTo(HaveOccurred(), output)
 			Expect(output).To(ContainSubstring("component: rke2-traefik"))
-			Expect(output).To(ContainSubstring("available tags ("))
+			Expect(output).To(ContainSubstring("eligible tags ("))
 		})
 
 		It("lists tags with CVEs for rke2-flannel", func() {
@@ -56,6 +56,7 @@ var _ = Describe("Flannel and Traefik image-list", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred(), output)
 			Expect(output).To(ContainSubstring("COMPONENT:  rke2-flannel"))
 			Expect(output).To(ContainSubstring("CVE COUNT"))
+			Expect(output).To(ContainSubstring("require an RKE2 upgrade"))
 		})
 	})
 })

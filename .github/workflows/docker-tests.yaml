@@ -46,6 +46,7 @@ jobs:
           - merging_values
           - reconcile_upgrade
           - airgap
+          - multi_patcher_reconcile
         exclude:
           - exec_mode: pod
             scenario: image_cve_local
@@ -73,11 +74,10 @@ jobs:
         env:
           EXEC_MODE: ${{ matrix.exec_mode }}
         run: |
-          timeout=80m
-          extra_args=""
-          if [ "${{ matrix.scenario }}" = "airgap" ]; then
-            timeout=90m
-            extra_args="-imageBundlesDir ./tests/docker/airgap/bundles"
-          fi
+          make_target="test-docker-${{ matrix.scenario }}"
 
-          go test -v -timeout="${timeout}" ./tests/docker/${{ matrix.scenario }}/${{ matrix.scenario }}_test.go -ginkgo.v -ci -rke2Version v1.35.3+rke2r3 -patcherBin ./bin/rke2-patcher ${extra_args}
+          if [ "${{ matrix.scenario }}" = "airgap" ]; then
+            make "$make_target" EXEC_MODE="${EXEC_MODE}" IMAGE_BUNDLES_DIR="$(pwd)/tests/docker/airgap/bundles"
+          else
+            make "$make_target" EXEC_MODE="${EXEC_MODE}"
+          fi

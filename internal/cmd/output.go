@@ -26,6 +26,18 @@ func printImageListWithCVEs(component components.Component, tagsToScan []string,
 	}
 }
 
+func printUpgradeRequiredTagsNotice(blockedTags []string) {
+	if len(blockedTags) == 0 {
+		return
+	}
+
+	fmt.Printf("\n%d additional newer tag(s) are available but require an RKE2 upgrade, so they were not scanned:\n", len(blockedTags))
+	for _, tagName := range blockedTags {
+		fmt.Printf("- %s\n", tagName)
+	}
+	fmt.Printf("Upgrade RKE2 to make these tags eligible for patching.\n")
+}
+
 func printPatchPreview(componentName, runningImage, currentTag, targetTag, content string) {
 	fmt.Printf("component: %s\n", componentName)
 	fmt.Printf("current image: %s\n", runningImage)

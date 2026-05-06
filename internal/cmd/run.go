@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/manuelbuil/rke2-patcher/internal/components"
 	"github.com/manuelbuil/rke2-patcher/internal/cve"
@@ -75,8 +73,16 @@ func runImageList(component components.Component, options imageListOptions) erro
 		return fmt.Errorf("failed to determine tags to show for current tag %q", currentTag)
 	}
 
+	eligibleTags, blockedTags, err := splitTagsByPatchWindow(component.Name, tagsToShow, currentTag, previousTag)
+	if err != nil {
+		if options.WithCVEs {
+			return fmt.Errorf("failed to determine patch-window eligible tags for CVE selection: %w", err)
+		}
+		return fmt.Errorf("failed to determine patch-window eligible tags: %w", err)
+	}
+
 	if options.WithCVEs {
-		return runImageListWithCVEs(component, currentImageName, currentTag, tagsToShow, previousTag, options.Verbose)
+		return runImageListWithCVEs(component, currentImageName, currentTag, eligibleTags, blockedTags, previousTag, options.Verbose)
 	}
 
 	tagInfoByName := make(map[string]registry.Tag, len(tagsForSelection))
@@ -99,8 +105,8 @@ func runImageList(component components.Component, options imageListOptions) erro
 		fmt.Printf("- %s (pods: %d)\n", summary.Image, summary.Count)
 	}
 
-	fmt.Printf("available tags (%d):\n", len(tagsToShow))
-	for _, tagName := range tagsToShow {
+	fmt.Printf("eligible tags (%d):\n", len(eligibleTags))
+	for _, tagName := range eligibleTags {
 		tag, found := tagInfoByName[tagName]
 		if !found {
 			continue
@@ -119,10 +125,21 @@ func runImageList(component components.Component, options imageListOptions) erro
 		fmt.Printf("- %s%s\n", tag.Name, suffix)
 	}
 
+	if len(blockedTags) > 0 {
+		fmt.Printf("newer tags requiring RKE2 upgrade (%d):\n", len(blockedTags))
+		for _, tagName := range blockedTags {
+			tag, found := tagInfoByName[tagName]
+			if !found {
+				continue
+			}
+			fmt.Printf("- %s\n", tag.Name)
+		}
+	}
+
 	return nil
 }
 
-func runImageListWithCVEs(component components.Component, imageName, currentTag string, tagsToScan []string, previousTag string, verbose bool) error {
+func runImageListWithCVEs(component components.Component, imageName, currentTag string, tagsToScan []string, blockedTags []string, previousTag string, verbose bool) error {
 	targetImages := make([]string, 0, len(tagsToScan))
 	for _, tagName := range tagsToScan {
 		targetImages = append(targetImages, fmt.Sprintf("%s:%s", imageName, tagName))
@@ -151,6 +168,7 @@ func runImageListWithCVEs(component components.Component, imageName, currentTag 
 	}
 
 	printImageListWithCVEs(component, tagsToScan, currentTag, previousTag, cveByTag, verbose)
+	printUpgradeRequiredTagsNotice(blockedTags)
 	return nil
 }
 
@@ -186,6 +204,10 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 
 	targetTagName, err := resolvePatchTargetTag(component.Repository, currentImageTag)
 	if err != nil {
+		return err
+	}
+
+	if err := validatePatchWindow(component.Name, targetTagName); err != nil {
 		return err
 	}
 
@@ -301,7 +323,7 @@ func runReconcile(component components.Component, autoApprove bool) error {
 			return nil
 		}
 
-		prompt := fmt.Sprintf("image-reconcile: component %s: no stale patches found; already up to date. Would you like to revert the patch? [Yes/No]: ", componentName)
+		prompt := fmt.Sprintf("image-reconcile: component %s: no stale patches found; already up to date. Would you like to revert the patch(es)? [Yes/No]: ", componentName)
 		var approved bool
 		if autoApprove {
 			approved = true
@@ -354,23 +376,6 @@ func runReconcile(component components.Component, autoApprove bool) error {
 	}
 
 	return removeEntriesFromState(namespace, keysToRemove)
-}
-
-// verifyFileWritten checks that filePath exists and was last modified no earlier
-// than writeTime, confirming a recent successful write rather than a stale file.
-func verifyFileWritten(filePath string, writeTime time.Time) error {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return fmt.Errorf("file %q not found after write: %w", filePath, err)
-	}
-	// Truncate to second precision: most filesystems store mtime at 1-second
-	// granularity, so comparing with a nanosecond-precise writeTime would
-	// spuriously fail when both timestamps fall within the same second.
-	if info.ModTime().Before(writeTime.Truncate(time.Second)) {
-		return fmt.Errorf("file %q exists but was not updated (mtime %s predates write at %s)",
-			filePath, info.ModTime().Format(time.RFC3339), writeTime.Format(time.RFC3339))
-	}
-	return nil
 }
 
 // reconcileEntry removes the patcher values from the HelmChartConfig file specified in the entry

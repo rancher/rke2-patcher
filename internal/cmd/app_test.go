@@ -387,7 +387,7 @@ func useInMemoryPatchStateBackend(t *testing.T) {
 	})
 }
 
-func TestEvaluatePatchEligibility_OnlyOneForwardPatchPerComponentAndClusterVersion(t *testing.T) {
+func TestEvaluatePatchEligibility_AllowsMultipleForwardPatchesPerComponentAndClusterVersion(t *testing.T) {
 	useInMemoryPatchStateBackend(t)
 
 	originalClusterVersionResolver := clusterVersionResolver
@@ -407,17 +407,31 @@ func TestEvaluatePatchEligibility_OnlyOneForwardPatchPerComponentAndClusterVersi
 		t.Fatalf("unexpected persistence error: %v", err)
 	}
 
-	_, err = generateStateWrite("rke2-traefik", "v3.6.8-build20260302", "v3.6.9-build20260303", "")
-	if err == nil {
-		t.Fatalf("expected second forward patch to be rejected")
+	secondDecision, err := generateStateWrite("rke2-traefik", "v3.6.8-build20260302", "v3.6.9-build20260303", "")
+	if err != nil {
+		t.Fatalf("expected second forward patch to be allowed, got %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "already patched once") {
-		t.Fatalf("expected already-patched-once error, got %q", err.Error())
+	if err := persistPatchDecision(secondDecision); err != nil {
+		t.Fatalf("unexpected second persistence error: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "upgrade RKE2 to patch again") {
-		t.Fatalf("expected upgrade RKE2 guidance, got %q", err.Error())
+	state, _, err := loadPatchStateFromBackend(patchStateNamespace())
+	if err != nil {
+		t.Fatalf("unexpected state load error: %v", err)
+	}
+
+	entry, found := state.Entries["v1.35.2+rke2r1|rke2-traefik"]
+	if !found {
+		t.Fatalf("expected state entry for component")
+	}
+
+	if entry.BaselineTag != "v3.6.7-build20260301" {
+		t.Fatalf("expected baseline tag to stay on first observed value, got %q", entry.BaselineTag)
+	}
+
+	if entry.PatchedToTag != "v3.6.9-build20260303" {
+		t.Fatalf("expected patched-to tag to be updated, got %q", entry.PatchedToTag)
 	}
 }
 
