@@ -97,7 +97,7 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 
 			output, err = tc.RunImagePatch("rke2-ingress-nginx", false)
 			Expect(err).To(HaveOccurred())
-			Expect(output).To(ContainSubstring("is already the latest"))
+			Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
 		})
 	})
 
