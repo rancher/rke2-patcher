@@ -78,6 +78,9 @@ jobs:
           aws s3 sync dist/artifacts "$S3_PATH" --no-progress
           echo "Uploaded artifacts to $S3_PATH"
 
+      - name: setup ecm-distro-tools
+        uses: rancher/ecm-distro-tools@0cb798f5f291022a6f6008d676f7253c8520787a # v0.73.2
+
       - name: Generate prime ribs index
         run: |
           ECM_AUTH_CONFIG=$(release config gen | jq '.auth | .aws_access_key_id |= "${{ env.AWS_ACCESS_KEY_ID }}" | .aws_secret_access_key |= "${{ env.AWS_SECRET_ACCESS_KEY }}" | .aws_session_token |= "" | .aws_default_region |= "${{ env.AWS_DEFAULT_REGION }}"')

@@ -49,7 +49,7 @@ const (
 
 var trivyVEXDownloadScriptLines = []string{
 	"VEX_FILE=\"/tmp/rancher.openvex.json\"",
-	"VEX_URL=\"https://raw.githubusercontent.com/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json\"",
+	"VEX_URL=\"https://github.com/rancher/vexhub/raw/refs/heads/main/reports/rancher.openvex.json\"",
 	"download_vex() {",
 	"  if command -v curl >/dev/null 2>&1; then",
 	"    curl -fsSL \"${VEX_URL}\" -o \"${VEX_FILE}\"",

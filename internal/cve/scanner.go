@@ -26,7 +26,7 @@ const (
 	batchScanBeginPrefix = "__RKE2_PATCHER_TRIVY_BEGIN__"
 	batchScanRCPrefix    = "__RKE2_PATCHER_TRIVY_RC__"
 	batchScanEndPrefix   = "__RKE2_PATCHER_TRIVY_END__"
-	vexReportURL         = "https://raw.githubusercontent.com/rancher/vexhub/refs/heads/main/reports/rancher.openvex.json"
+	vexReportURL         = "https://github.com/rancher/vexhub/raw/refs/heads/main/reports/rancher.openvex.json"
 	vexFileName          = "rancher.openvex.json"
 	vexDownloadAttempts  = 5
 	vexMaxFileAge        = 24 * time.Hour
