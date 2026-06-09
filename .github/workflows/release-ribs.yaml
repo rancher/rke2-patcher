@@ -44,6 +44,9 @@ jobs:
             secret/data/github/repo/${{ github.repository }}/prime-artifacts-uploader/credentials accessKeyId | AWS_ACCESS_KEY_ID ;
             secret/data/github/repo/${{ github.repository }}/prime-artifacts-uploader/credentials secretAccessKey | AWS_SECRET_ACCESS_KEY ;
             secret/data/github/repo/${{ github.repository }}/prime-artifacts-uploader/credentials primeArtifactsBucketName | PRIME_ARTIFACTS_BUCKET_NAME ;
+            secret/data/github/repo/${{ github.repository }}/aws/release-team-cloudfront-cache-invalidation/credentials accessKeyId | AWS_ACCESS_KEY_ID_CACHE_INVALIDATION ;
+            secret/data/github/repo/${{ github.repository }}/aws/release-team-cloudfront-cache-invalidation/credentials secretAccessKey | AWS_SECRET_ACCESS_KEY_CACHE_INVALIDATION ;
+            secret/data/github/repo/${{ github.repository }}/aws/release-team-cloudfront-cache-invalidation/credentials primeArtifactsDistributionId | PRIME_ARTIFACTS_DISTRIBUTION_ID ;
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6
@@ -74,3 +77,25 @@ jobs:
           set -euo pipefail
           aws s3 sync dist/artifacts "$S3_PATH" --no-progress
           echo "Uploaded artifacts to $S3_PATH"
+
+      - name: Generate prime ribs index
+        run: |
+          ECM_AUTH_CONFIG=$(release config gen | jq '.auth | .aws_access_key_id |= "${{ env.AWS_ACCESS_KEY_ID }}" | .aws_secret_access_key |= "${{ env.AWS_SECRET_ACCESS_KEY }}" | .aws_session_token |= "" | .aws_default_region |= "${{ env.AWS_DEFAULT_REGION }}"')
+          ECM_CONFIG="{\"auth\": $ECM_AUTH_CONFIG}"
+          release generate rancher artifacts-index --config "$ECM_CONFIG" --write-path . --ignore-versions v2.6.4
+
+      - name: Upload prime ribs index
+        run: |
+          aws s3 cp index.html s3://${{ env.PRIME_ARTIFACTS_BUCKET_NAME }}/index.html
+          aws s3 cp index-prerelease.html s3://${{ env.PRIME_ARTIFACTS_BUCKET_NAME }}/index-prerelease.html
+
+      - name: Configure Cache Invalidation AWS Credentials
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID_CACHE_INVALIDATION }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY_CACHE_INVALIDATION }}
+          aws-region: us-east-1
+
+      - name: Invalidate cloudfront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ env.PRIME_ARTIFACTS_DISTRIBUTION_ID }} --paths "/*"
