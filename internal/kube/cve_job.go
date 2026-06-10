@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manuelbuil/rke2-patcher/internal/vex"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -49,7 +50,7 @@ const (
 
 var trivyVEXDownloadScriptLines = []string{
 	"VEX_FILE=\"/tmp/rancher.openvex.json\"",
-	"VEX_URL=\"https://github.com/rancher/vexhub/raw/refs/heads/main/reports/rancher.openvex.json\"",
+	fmt.Sprintf("VEX_URL=\"%s\"", vex.ReportURL),
 	"download_vex() {",
 	"  if command -v curl >/dev/null 2>&1; then",
 	"    curl -fsSL \"${VEX_URL}\" -o \"${VEX_FILE}\"",

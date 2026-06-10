@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/manuelbuil/rke2-patcher/internal/vex"
 )
 
 const cveModeEnv = "RKE2_PATCHER_CVE_MODE"
@@ -26,7 +27,6 @@ const (
 	batchScanBeginPrefix = "__RKE2_PATCHER_TRIVY_BEGIN__"
 	batchScanRCPrefix    = "__RKE2_PATCHER_TRIVY_RC__"
 	batchScanEndPrefix   = "__RKE2_PATCHER_TRIVY_END__"
-	vexReportURL         = "https://github.com/rancher/vexhub/raw/refs/heads/main/reports/rancher.openvex.json"
 	vexFileName          = "rancher.openvex.json"
 	vexDownloadAttempts  = 5
 	vexMaxFileAge        = 24 * time.Hour
@@ -303,12 +303,12 @@ func ensureLocalVEXFile() (string, error) {
 		return vexFilePath, nil
 	}
 
-	return "", fmt.Errorf("failed to download vex report from %q after %d attempts and no local VEX file is available; local scan requires the VEX file: %w", vexReportURL, vexDownloadAttempts, lastErr)
+	return "", fmt.Errorf("failed to download vex report from %q after %d attempts and no local VEX file is available; local scan requires the VEX file: %w", vex.ReportURL, vexDownloadAttempts, lastErr)
 }
 
 // downloadVEXFileOnce downloads the VEX file from the hardcoded URL and saves it to the given path
 func downloadVEXFileOnce(vexDirectory string, vexFilePath string) error {
-	response, err := http.Get(vexReportURL)
+	response, err := http.Get(vex.ReportURL)
 	if err != nil {
 		return fmt.Errorf("download request failed: %w", err)
 	}

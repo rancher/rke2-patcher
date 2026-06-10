@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/manuelbuil/rke2-patcher/internal/vex"
 )
 
 const scannerNamespace = "rke2-patcher"
@@ -254,15 +256,11 @@ func stripRegistryPrefix(ref string) string {
 	return ref
 }
 
-// vexDownloadURL is the canonical source for the Rancher OpenVEX report.
-// It must stay in sync with internal/cve/scanner.go vexReportURL.
-const vexDownloadURL = "https://github.com/rancher/vexhub/raw/refs/heads/main/reports/rancher.openvex.json"
-
 // DownloadVEXFile downloads the Rancher OpenVEX report to TestDir and returns
 // its local path.  Call StageVEXFile afterwards to copy it into the node.
 func (config *TestConfig) DownloadVEXFile() (string, error) {
 	destPath := filepath.Join(config.TestDir, "rancher.openvex.json")
-	curlCmd := fmt.Sprintf("curl -fsSL -o %q %s", destPath, vexDownloadURL)
+	curlCmd := fmt.Sprintf("curl -fsSL -o %q %s", destPath, vex.ReportURL)
 	if out, err := RunCommand(curlCmd); err != nil {
 		return "", fmt.Errorf("failed to download VEX file: %s: %w", out, err)
 	}
