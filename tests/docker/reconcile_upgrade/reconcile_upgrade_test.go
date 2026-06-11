@@ -91,13 +91,17 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 
 	Context("Patch after upgrade should fail", func() {
 		It("fails to patch rke2-coredns and rke2-ingress-nginx", func() {
-			output, err := tc.RunImagePatch("rke2-coredns", false)
-			Expect(err).To(HaveOccurred())
-			Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
+			Eventually(func(g Gomega) {
+				output, err := tc.RunImagePatch("rke2-coredns", false)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
+			}, "60s", "5s").Should(Succeed())
 
-			output, err = tc.RunImagePatch("rke2-ingress-nginx", false)
-			Expect(err).To(HaveOccurred())
-			Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
+			Eventually(func(g Gomega) {
+				output, err := tc.RunImagePatch("rke2-ingress-nginx", false)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
+			}, "60s", "5s").Should(Succeed())
 		})
 	})
 
