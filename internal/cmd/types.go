@@ -10,6 +10,11 @@ type imagePatchOptions struct {
 	AutoApprove bool
 }
 
+type nodePlanOptions struct {
+	DryRun      bool
+	AutoApprove bool
+}
+
 type cveListEntry struct {
 	CVEs  []string
 	Error string

@@ -8,6 +8,7 @@ import (
 
 	"github.com/manuelbuil/rke2-patcher/internal/components"
 	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/manuelbuil/rke2-patcher/internal/nodeplan"
 	cli "github.com/urfave/cli/v2"
 )
 
@@ -84,6 +85,21 @@ func BuildCLIApp() *cli.App {
 					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Automatically approve merge/apply prompts"},
 				},
 				Action: runReconcileCommand,
+			},
+			{
+				Name:      "node-plan",
+				Usage:     "Generate/apply a system-upgrade-controller Plan to roll out a node-level image (rke2-runtime, rke2-kubernetes)",
+				ArgsUsage: "<component>",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "image-tag", Usage: "Target image tag to roll out", Required: true},
+					&cli.StringFlag{Name: "upgrader-image", Usage: "Upgrader image that applies the change on each node"},
+					&cli.StringFlag{Name: "namespace", Value: nodeplan.DefaultNamespace, Usage: "Namespace for the generated Plan(s)"},
+					&cli.StringFlag{Name: "service-account", Value: nodeplan.DefaultServiceAccount, Usage: "ServiceAccount used by the Plan job"},
+					&cli.IntFlag{Name: "concurrency", Value: nodeplan.DefaultConcurrency, Usage: "Number of nodes upgraded in parallel"},
+					&cli.BoolFlag{Name: "dry-run", Usage: "Print generated Plan(s) without applying"},
+					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Automatically approve apply prompts"},
+				},
+				Action: runNodePlanCommand,
 			},
 		},
 	}
@@ -204,6 +220,35 @@ func runReconcileCommand(ctx *cli.Context) error {
 	return runReconcile(component, autoApprove)
 }
 
+// runNodePlanCommand handles the "node-plan" CLI command
+func runNodePlanCommand(ctx *cli.Context) error {
+	if err := validateNoExtraArgs(ctx); err != nil {
+		return err
+	}
+
+	component, err := resolveComponentForCommand(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !component.IsNodeLevel() {
+		return cli.Exit(fmt.Sprintf("%q is a Helm-managed component; use image-patch instead", components.CLIName(component.Name)), usageExitCode)
+	}
+
+	planOptions := nodeplan.Options{
+		Namespace:      ctx.String("namespace"),
+		ServiceAccount: ctx.String("service-account"),
+		UpgraderImage:  ctx.String("upgrader-image"),
+		ImageTag:       ctx.String("image-tag"),
+		Concurrency:    ctx.Int("concurrency"),
+	}
+
+	return runNodePlan(component, planOptions, nodePlanOptions{
+		DryRun:      ctx.Bool("dry-run"),
+		AutoApprove: ctx.Bool("yes"),
+	})
+}
+
 // printUsage prints a help menu describing how the tool must be used
 func printUsage() {
 	fmt.Println("Usage:")
@@ -213,6 +258,7 @@ func printUsage() {
 	fmt.Println("  rke2-patcher image-list <component> [--with-cves] [--verbose]")
 	fmt.Println("  rke2-patcher image-patch <component> [--dry-run] [--yes|-y]")
 	fmt.Println("  rke2-patcher image-reconcile <component> [--yes|-y]")
+	fmt.Println("  rke2-patcher node-plan <component> --image-tag <tag> [--upgrader-image <img>] [--dry-run] [--yes|-y]")
 	fmt.Println()
 	fmt.Printf("Supported components: %s\n", strings.Join(components.Supported(), ", "))
 	fmt.Println()

@@ -175,6 +175,10 @@ func runImageListWithCVEs(component components.Component, imageName, currentTag 
 // runImagePatch attempts to patch the running image of the component to a new tag by writing a HelmChartConfig manifest
 // with the new image, handling potential conflicts with existing HelmChartConfigs and respecting patch limits
 func runImagePatch(component components.Component, options imagePatchOptions) error {
+	if component.IsNodeLevel() {
+		return fmt.Errorf("component %q is a node-level image with no HelmChartConfig; use 'rke2-patcher node-plan %s' instead", components.CLIName(component.Name), components.CLIName(component.Name))
+	}
+
 	// Check for prime flag in HelmChart
 	primeChartName := component.HelmChartConfigName
 	primeChartNS := "kube-system"
