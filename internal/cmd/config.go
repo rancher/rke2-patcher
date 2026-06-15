@@ -29,6 +29,7 @@ type configEntry struct {
 	Effective string
 	Default   string
 	Source    string
+	EnvVar    string
 }
 
 func runConfigCommand(ctx *cli.Context) error {
@@ -43,7 +44,12 @@ func runConfigCommand(ctx *cli.Context) error {
 
 	fmt.Println("effective configuration:")
 	for _, entry := range entries {
-		fmt.Printf("- %s: %s (default: %s, source: %s)\n", entry.Key, entry.Effective, entry.Default, entry.Source)
+		envVar := strings.TrimSpace(entry.EnvVar)
+		if envVar == "" {
+			envVar = "n/a"
+		}
+
+		fmt.Printf("- %s: %s (default: %s, source: %s, env: %s)\n", entry.Key, entry.Effective, entry.Default, entry.Source, envVar)
 	}
 
 	return nil
@@ -69,12 +75,12 @@ func collectConfigEntries() ([]configEntry, error) {
 	cveScannerImage, cveScannerImageSource := envOr(cveScannerImageEnvName, defaultCVEScannerImage)
 
 	entries := []configEntry{
-		{Key: "registry", Effective: registryValue, Default: "https://" + defaultRegistryHost, Source: registrySource},
-		{Key: "scanner_mode", Effective: scannerMode, Default: defaultCVEMode, Source: scannerModeSource},
-		{Key: "cve_namespace", Effective: cveNamespace, Default: defaultCVENamespaceName, Source: cveNamespaceSource},
-		{Key: "cve_scanner_image", Effective: cveScannerImage, Default: defaultCVEScannerImage, Source: cveScannerImageSource},
-		{Key: "cve_job_timeout", Effective: jobTimeout.String(), Default: defaultCVEJobTimeout.String(), Source: timeoutSource},
-		{Key: "rke2_patcher_state_configmap", Effective: kube.StateConfigMapName, Default: kube.StateConfigMapName, Source: "default"},
+		{Key: "registry", Effective: registryValue, Default: "https://" + defaultRegistryHost, Source: registrySource, EnvVar: registryEnvName},
+		{Key: "scanner_mode", Effective: scannerMode, Default: defaultCVEMode, Source: scannerModeSource, EnvVar: cveModeEnvName},
+		{Key: "cve_namespace", Effective: cveNamespace, Default: defaultCVENamespaceName, Source: cveNamespaceSource, EnvVar: cveNamespaceEnvName},
+		{Key: "cve_scanner_image", Effective: cveScannerImage, Default: defaultCVEScannerImage, Source: cveScannerImageSource, EnvVar: cveScannerImageEnvName},
+		{Key: "cve_job_timeout", Effective: jobTimeout.String(), Default: defaultCVEJobTimeout.String(), Source: timeoutSource, EnvVar: cveJobTimeoutEnvName},
+		{Key: "rke2_patcher_state_configmap", Effective: kube.StateConfigMapName, Default: kube.StateConfigMapName, Source: "default", EnvVar: "n/a"},
 	}
 
 	return entries, nil

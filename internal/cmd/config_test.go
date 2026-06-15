@@ -23,6 +23,9 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 	if registry.Source != "default" {
 		t.Fatalf("unexpected default registry source: %q", registry.Source)
 	}
+	if registry.EnvVar != registryEnvName {
+		t.Fatalf("unexpected default registry env var: %q", registry.EnvVar)
+	}
 
 	scannerMode := configEntryByKey(entries, "scanner_mode")
 	if scannerMode.Effective != "cluster" {
@@ -32,6 +35,14 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 	cveNamespace := configEntryByKey(entries, "cve_namespace")
 	if cveNamespace.Effective != "rke2-patcher" {
 		t.Fatalf("unexpected default cve namespace: %q", cveNamespace.Effective)
+	}
+	if cveNamespace.EnvVar != cveNamespaceEnvName {
+		t.Fatalf("unexpected default cve namespace env var: %q", cveNamespace.EnvVar)
+	}
+
+	stateConfigmap := configEntryByKey(entries, "rke2_patcher_state_configmap")
+	if stateConfigmap.EnvVar != "n/a" {
+		t.Fatalf("unexpected state configmap env var: %q", stateConfigmap.EnvVar)
 	}
 
 	stateNamespace := configEntryByKey(entries, "rke2_patcher_state_namespace")
@@ -69,6 +80,9 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 	if registry.Source != registryEnvName {
 		t.Fatalf("unexpected registry source: %q", registry.Source)
 	}
+	if registry.EnvVar != registryEnvName {
+		t.Fatalf("unexpected registry env var: %q", registry.EnvVar)
+	}
 
 	scannerMode := configEntryByKey(entries, "scanner_mode")
 	if scannerMode.Effective != "local" {
@@ -76,6 +90,9 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 	}
 	if scannerMode.Source != cveModeEnvName {
 		t.Fatalf("unexpected scanner mode source: %q", scannerMode.Source)
+	}
+	if scannerMode.EnvVar != cveModeEnvName {
+		t.Fatalf("unexpected scanner mode env var: %q", scannerMode.EnvVar)
 	}
 
 	cveNamespace := configEntryByKey(entries, "cve_namespace")
