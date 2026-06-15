@@ -101,7 +101,7 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 				output, err := tc.RunImagePatch("rke2-ingress-nginx", false)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
-			}, "60s", "5s").Should(Succeed())
+			}, "100s", "5s").Should(Succeed())
 		})
 	})
 

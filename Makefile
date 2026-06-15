@@ -1,12 +1,19 @@
 BINARY ?= rke2-patcher
 EXEC_MODE ?= binary
 IMAGE_BUNDLES_DIR ?= $(CURDIR)/tests/docker/airgap/bundles
+REPO ?= rancher
+TAG ?= ${GITHUB_ACTION_TAG}
+IMAGE = $(REPO)/rke2-patcher:$(TAG)
 
-.PHONY: help build version image-cve image-list image-patch test-docker-default test-docker-calico-traefik docker-build test-docker-airgap
-.PHONY: test-docker-image_cve test-docker-image_list test-docker-patch_components
-.PHONY: test-docker-flannel_traefik_patch_components test-docker-image_cve_local
-.PHONY: test-docker-merging_values test-docker-reconcile_upgrade test-docker-multi_patcher_reconcile
-.PHONY: test-docker-patch_reconcile_component_ha test-docker-reconcile
+ifeq ($(TAG),)
+TAG := v1.2.0$(BUILD_META)
+endif
+
+.PHONY: help build build-image push-image \
+	test-docker-image_cve test-docker-image_list test-docker-patch_components \
+	test-docker-flannel_traefik_patch_components test-docker-patch_reconcile_component_ha \
+	test-docker-reconcile test-docker-image_cve_local test-docker-merging_values \
+	test-docker-reconcile_upgrade test-docker-airgap test-docker-multi_patcher_reconcile
 
 help:
 	@echo "Build:"
@@ -69,4 +76,14 @@ test-docker-multi_patcher_reconcile: build
 VERSION ?= $(shell grep '^const version' internal/cmd/app.go | cut -d '"' -f2)
 
 build-image:
-	docker build -t mbuilsuse/rke2-patcher:$(VERSION) .
+	docker build -t $(IMAGE) .
+
+push-image:
+	docker buildx build \
+	$(IID_FILE_FLAG) \
+	$(BUILDX_ARGS) \
+	--sbom=true \
+	--attest type=provenance,mode=max" \
+	--tag $(IMAGE) \
+        --push \
+        .
