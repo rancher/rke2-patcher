@@ -6,12 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/manuelbuil/rke2-patcher/internal/components"
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/kube"
+	patcherversion "github.com/rancher/rke2-patcher/internal/version"
 	cli "github.com/urfave/cli/v2"
 )
 
-const version = "1.2.0"
 const usageExitCode = 2
 
 var clusterVersionResolver = kube.ClusterVersion
@@ -227,7 +227,7 @@ func printUsage() {
 
 // printVersion prints the version of the tool and the version of the RKE2 cluster
 func printVersion() {
-	fmt.Printf("rke2-patcher %s\n", version)
+	fmt.Printf("rke2-patcher %s\n", patcherversion.Version)
 
 	clusterVersion, err := kube.ClusterVersion()
 	if err != nil {

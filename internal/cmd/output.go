@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/manuelbuil/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/components"
 )
 
 func printImageListWithCVEs(component components.Component, tagsToScan []string, currentTag string, previousTag string, cveByTag map[string]cveListEntry, verbose bool) {

@@ -59,8 +59,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/artifacts
-
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/artifacts/rke2-patcher .
+          VERSION="${TAG#v}"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X github.com/rancher/rke2-patcher/internal/version.Version=${VERSION}" -o dist/artifacts/rke2-patcher .
 
       - name: Generate sha256 sums
         run: |

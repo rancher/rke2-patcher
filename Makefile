@@ -4,9 +4,15 @@ IMAGE_BUNDLES_DIR ?= $(CURDIR)/tests/docker/airgap/bundles
 REPO ?= rancher
 TAG ?= ${GITHUB_ACTION_TAG}
 IMAGE = $(REPO)/rke2-patcher:$(TAG)
+VERSION ?= dev
+LDFLAGS ?= -X github.com/rancher/rke2-patcher/internal/version.Version=$(VERSION)
 
 ifeq ($(TAG),)
-TAG := v1.2.0$(BUILD_META)
+TAG := v1.2.1$(BUILD_META)
+endif
+
+ifneq ($(filter v%,$(TAG)),)
+VERSION := $(patsubst v%,%,$(TAG))
 endif
 
 .PHONY: help build build-image push-image \
@@ -38,7 +44,7 @@ help:
 	@echo "  IMAGE_BUNDLES_DIR=$(IMAGE_BUNDLES_DIR)"
 
 build:
-	CGO_ENABLED=0 go build -o $(BINARY) .
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
 
 test-docker-image_cve: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/image_cve/image_cve_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
@@ -73,17 +79,16 @@ test-docker-airgap: build
 test-docker-multi_patcher_reconcile: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/multi_patcher_reconcile/multi_patcher_reconcile_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
-VERSION ?= $(shell grep '^const version' internal/cmd/app.go | cut -d '"' -f2)
-
 build-image:
-	docker build -t $(IMAGE) .
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
 push-image:
 	docker buildx build \
 	$(IID_FILE_FLAG) \
 	$(BUILDX_ARGS) \
+	--build-arg VERSION=$(VERSION) \
 	--sbom=true \
-	--attest type=provenance,mode=max" \
+	--attest type=provenance,mode=max \
 	--tag $(IMAGE) \
         --push \
         .

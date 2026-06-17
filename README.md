@@ -259,7 +259,7 @@ Patch-limit state storage (not configurable):
 
 - `RKE2_PATCHER_CVE_SCANNER_IMAGE`
   - Scanner image used by cluster mode.
-  - Default: `aquasec/trivy:0.69.3`
+  - Default: `aquasec/trivy:0.71.1`
 
 - `RKE2_PATCHER_CVE_JOB_TIMEOUT`
   - Timeout for waiting on scan Job completion.

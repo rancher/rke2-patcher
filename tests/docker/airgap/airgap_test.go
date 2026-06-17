@@ -7,13 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manuelbuil/rke2-patcher/tests/docker"
+	"github.com/rancher/rke2-patcher/tests/docker"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-)
-
-const (
-	trivyVersion = "0.69.3"
 )
 
 var (
@@ -88,7 +84,7 @@ var _ = Describe("Airgap environment", Ordered, func() {
 		})
 
 		It("installs Trivy locally on the node", func() {
-			Expect(tc.InstallTrivyLocally(trivyVersion)).To(Succeed())
+			Expect(tc.InstallTrivyLocally(docker.TrivyVersion)).To(Succeed())
 		})
 
 		It("downloads and stages the VEX file on the node", func() {

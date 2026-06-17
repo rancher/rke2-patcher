@@ -6,13 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manuelbuil/rke2-patcher/tests/docker"
+	"github.com/rancher/rke2-patcher/tests/docker"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-)
-
-const (
-	trivyVersion = "0.69.3"
 )
 
 var (
@@ -43,7 +39,7 @@ var _ = Describe("Image CVE scan", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(tc.ProvisionServer()).To(Succeed())
-			Expect(tc.InstallTrivyLocally(trivyVersion)).To(Succeed())
+			Expect(tc.InstallTrivyLocally(docker.TrivyVersion)).To(Succeed())
 			Eventually(func() error {
 				return tc.CheckNodesReady(1)
 			}, "120s", "5s").Should(Succeed())
@@ -54,7 +50,7 @@ var _ = Describe("Image CVE scan", Ordered, func() {
 			Eventually(func(g Gomega) {
 				output, err := tc.CheckTrivyVersion()
 				Expect(err).NotTo(HaveOccurred(), output)
-				Expect(output).To(ContainSubstring("Version: " + trivyVersion))
+				Expect(output).To(ContainSubstring("Version: " + docker.TrivyVersion))
 			}, "60s", "5s").Should(Succeed())
 		})
 	})

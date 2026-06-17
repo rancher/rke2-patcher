@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/manuelbuil/rke2-patcher/internal/cmd"
+	"github.com/rancher/rke2-patcher/internal/cmd"
 )
 
 func main() {

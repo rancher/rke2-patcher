@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/manuelbuil/rke2-patcher/tests/docker"
+	"github.com/rancher/rke2-patcher/tests/docker"
 )
 
 const (

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
-	"github.com/manuelbuil/rke2-patcher/internal/vex"
+	"github.com/rancher/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/vex"
 )
 
 const scannerModeEnv = "RKE2_PATCHER_SCANNER_MODE"
