@@ -783,7 +783,7 @@ func (config *TestConfig) runPatcherCommand(args []string) (string, error) {
 func patcherEnvAssignments() string {
 	keys := []string{
 		"RKE2_PATCHER_REGISTRY",
-		"RKE2_PATCHER_CVE_MODE",
+		"RKE2_PATCHER_SCANNER_MODE",
 		"RKE2_PATCHER_CVE_NAMESPACE",
 		"RKE2_PATCHER_CVE_SCANNER_IMAGE",
 		"RKE2_PATCHER_CVE_JOB_TIMEOUT",

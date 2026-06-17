@@ -91,9 +91,9 @@ rke2-patcher image-cve rke2-traefik
 
 - Looks up the current running image in the cluster for the selected component.
 - Scans it for CVEs using an in-cluster Kubernetes `Job` that runs `trivy`.
-- Uses cluster mode by default (`RKE2_PATCHER_CVE_MODE=cluster`).
+- Uses cluster mode by default (`RKE2_PATCHER_SCANNER_MODE=cluster`).
 - In cluster mode, if the target scan namespace does not exist, the tool asks whether it should create it and creates it on confirmation.
-- In local mode (`RKE2_PATCHER_CVE_MODE=local`), it tries local scanners in order: `trivy` first, then `grype` as fallback.
+- In local mode (`RKE2_PATCHER_SCANNER_MODE=local`), it tries local scanners in order: `trivy` first, then `grype` as fallback.
 - `grype` support is experimental.
 - In local mode, both `trivy` and `grype` use a shared local VEX file at `$HOME/rke2-patcher-cache/vex/rancher.openvex.json`:
   - if the file exists and is newer than 24 hours, it is reused (no download)
@@ -206,10 +206,10 @@ Typical upgrade flow:
     - `/etc/rancher/rke2/rke2.yaml`, or
     - `~/.kube/config`
 - Network access to the configured image registry endpoint (`RKE2_PATCHER_REGISTRY`, default `registry.rancher.com`).
-- For `image-cve` default mode (`RKE2_PATCHER_CVE_MODE=cluster`), Kubernetes access that allows creating and reading Jobs/Pods in the scan namespace.
+- For `image-cve` default mode (`RKE2_PATCHER_SCANNER_MODE=cluster`), Kubernetes access that allows creating and reading Jobs/Pods in the scan namespace.
 - For `image-patch`, Kubernetes access that allows reading/writing ConfigMaps in the state namespace (same namespace used by `RKE2_PATCHER_CVE_NAMESPACE`; default `rke2-patcher`).
 - For `image-reconcile`, access to the same patcher state ConfigMap is required, and the Kubernetes API permissions must allow updating `HelmChartConfig` objects.
-- Local scanner installation is optional and only needed when using local mode (`RKE2_PATCHER_CVE_MODE=local`):
+- Local scanner installation is optional and only needed when using local mode (`RKE2_PATCHER_SCANNER_MODE=local`):
   - `trivy`, or
   - `grype`
 
@@ -238,7 +238,7 @@ The `image-patch` command supports these options and related inputs:
 
 The `image-cve` command supports these overrides:
 
-- `RKE2_PATCHER_CVE_MODE`
+- `RKE2_PATCHER_SCANNER_MODE`
   - CVE scanner execution mode.
   - Allowed: `cluster`, `local`
   - Default: `cluster`

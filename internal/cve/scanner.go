@@ -20,7 +20,7 @@ import (
 	"github.com/manuelbuil/rke2-patcher/internal/vex"
 )
 
-const cveModeEnv = "RKE2_PATCHER_CVE_MODE"
+const scannerModeEnv = "RKE2_PATCHER_SCANNER_MODE"
 
 const (
 	// Prefixes used to parse batch scan output from the cluster scanner job to frame each image's output
@@ -344,9 +344,9 @@ func downloadVEXFileOnce(vexDirectory string, vexFilePath string) error {
 	return nil
 }
 
-// resolveScanMode determines the scan mode based on the RKE2_PATCHER_CVE_MODE environment variable
+// resolveScanMode determines the scan mode based on the RKE2_PATCHER_SCANNER_MODE environment variable
 func resolveScanMode() (string, error) {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv(cveModeEnv)))
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv(scannerModeEnv)))
 	if mode == "" {
 		return "cluster", nil
 	}
@@ -355,7 +355,7 @@ func resolveScanMode() (string, error) {
 	case "cluster", "local":
 		return mode, nil
 	default:
-		return "", fmt.Errorf("invalid %s value %q: expected cluster or local", cveModeEnv, mode)
+		return "", fmt.Errorf("invalid %s value %q: expected cluster or local", scannerModeEnv, mode)
 	}
 }
 

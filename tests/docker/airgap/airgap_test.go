@@ -152,9 +152,9 @@ var _ = Describe("Airgap environment", Ordered, func() {
 			It("reports CVEs for "+component+" using local scanner and reuses staged VEX without re-downloading", func() {
 				nodeRegistryAddr := tc.LocalRegistryAddr()
 				os.Setenv("RKE2_PATCHER_REGISTRY", "http://"+nodeRegistryAddr)
-				os.Setenv("RKE2_PATCHER_CVE_MODE", "local")
+				os.Setenv("RKE2_PATCHER_SCANNER_MODE", "local")
 				defer os.Unsetenv("RKE2_PATCHER_REGISTRY")
-				defer os.Unsetenv("RKE2_PATCHER_CVE_MODE")
+				defer os.Unsetenv("RKE2_PATCHER_SCANNER_MODE")
 
 				output, err := tc.RunImageCVE(component)
 				Expect(err).NotTo(HaveOccurred(), output)

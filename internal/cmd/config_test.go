@@ -6,7 +6,7 @@ import (
 
 func TestCollectConfigEntries_Defaults(t *testing.T) {
 	t.Setenv(registryEnvName, "")
-	t.Setenv(cveModeEnvName, "")
+	t.Setenv(scannerModeEnvName, "")
 	t.Setenv(cveNamespaceEnvName, "")
 	t.Setenv(cveScannerImageEnvName, "")
 	t.Setenv(cveJobTimeoutEnvName, "")
@@ -63,7 +63,7 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 
 func TestCollectConfigEntries_Overrides(t *testing.T) {
 	t.Setenv(registryEnvName, "mirror.local:5000")
-	t.Setenv(cveModeEnvName, "local")
+	t.Setenv(scannerModeEnvName, "local")
 	t.Setenv(cveNamespaceEnvName, "sec-scan")
 	t.Setenv(cveScannerImageEnvName, "scanner:1.2.3")
 	t.Setenv(cveJobTimeoutEnvName, "11m")
@@ -88,10 +88,10 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 	if scannerMode.Effective != "local" {
 		t.Fatalf("unexpected scanner mode effective value: %q", scannerMode.Effective)
 	}
-	if scannerMode.Source != cveModeEnvName {
+	if scannerMode.Source != scannerModeEnvName {
 		t.Fatalf("unexpected scanner mode source: %q", scannerMode.Source)
 	}
-	if scannerMode.EnvVar != cveModeEnvName {
+	if scannerMode.EnvVar != scannerModeEnvName {
 		t.Fatalf("unexpected scanner mode env var: %q", scannerMode.EnvVar)
 	}
 
@@ -117,12 +117,12 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 }
 
 func TestCollectConfigEntries_InvalidValues(t *testing.T) {
-	t.Setenv(cveModeEnvName, "invalid")
+	t.Setenv(scannerModeEnvName, "invalid")
 	if _, err := collectConfigEntries(); err == nil {
 		t.Fatalf("expected scanner mode validation error, got nil")
 	}
 
-	t.Setenv(cveModeEnvName, "cluster")
+	t.Setenv(scannerModeEnvName, "cluster")
 	t.Setenv(cveJobTimeoutEnvName, "0")
 	if _, err := collectConfigEntries(); err == nil {
 		t.Fatalf("expected timeout validation error, got nil")

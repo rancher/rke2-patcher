@@ -14,7 +14,7 @@ import (
 const (
 	registryEnvName         = "RKE2_PATCHER_REGISTRY"
 	defaultRegistryHost     = "registry.rancher.com"
-	cveModeEnvName          = "RKE2_PATCHER_CVE_MODE"
+	scannerModeEnvName      = "RKE2_PATCHER_SCANNER_MODE"
 	defaultCVEMode          = "cluster"
 	cveNamespaceEnvName     = "RKE2_PATCHER_CVE_NAMESPACE"
 	defaultCVENamespaceName = "rke2-patcher"
@@ -76,7 +76,7 @@ func collectConfigEntries() ([]configEntry, error) {
 
 	entries := []configEntry{
 		{Key: "registry", Effective: registryValue, Default: "https://" + defaultRegistryHost, Source: registrySource, EnvVar: registryEnvName},
-		{Key: "scanner_mode", Effective: scannerMode, Default: defaultCVEMode, Source: scannerModeSource, EnvVar: cveModeEnvName},
+		{Key: "scanner_mode", Effective: scannerMode, Default: defaultCVEMode, Source: scannerModeSource, EnvVar: scannerModeEnvName},
 		{Key: "cve_namespace", Effective: cveNamespace, Default: defaultCVENamespaceName, Source: cveNamespaceSource, EnvVar: cveNamespaceEnvName},
 		{Key: "cve_scanner_image", Effective: cveScannerImage, Default: defaultCVEScannerImage, Source: cveScannerImageSource, EnvVar: cveScannerImageEnvName},
 		{Key: "cve_job_timeout", Effective: jobTimeout.String(), Default: defaultCVEJobTimeout.String(), Source: timeoutSource, EnvVar: cveJobTimeoutEnvName},
@@ -113,13 +113,13 @@ func resolveRegistryConfig() (string, string, error) {
 }
 
 func resolveScannerModeConfig() (string, string, error) {
-	mode, source := envOr(cveModeEnvName, defaultCVEMode)
+	mode, source := envOr(scannerModeEnvName, defaultCVEMode)
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	switch mode {
 	case "cluster", "local":
 		return mode, source, nil
 	default:
-		return "", "", fmt.Errorf("invalid %s value %q: expected cluster or local", cveModeEnvName, mode)
+		return "", "", fmt.Errorf("invalid %s value %q: expected cluster or local", scannerModeEnvName, mode)
 	}
 }
 

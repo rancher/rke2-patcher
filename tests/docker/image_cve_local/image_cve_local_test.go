@@ -73,7 +73,7 @@ var _ = Describe("Image CVE scan", Ordered, func() {
 		for _, component := range components {
 			component := component
 			It("shows CVEs for "+component, func() {
-				os.Setenv("RKE2_PATCHER_CVE_MODE", "local")
+				os.Setenv("RKE2_PATCHER_SCANNER_MODE", "local")
 				os.Setenv("PATH", "/usr/local/bin:"+os.Getenv("PATH"))
 				output, err := tc.RunImageCVE(component)
 				Expect(err).NotTo(HaveOccurred(), output)

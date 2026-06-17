@@ -7,7 +7,7 @@ import (
 )
 
 func TestListForImages_LocalModeFromEnvUsesLocalScanner(t *testing.T) {
-	t.Setenv(cveModeEnv, "local")
+	t.Setenv(scannerModeEnv, "local")
 
 	originalClusterScanner := scanImagesWithTrivyJob
 	originalSingleScanner := listCVEsForImageLocal
