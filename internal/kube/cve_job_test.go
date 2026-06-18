@@ -3,7 +3,7 @@ package kube_test
 import (
 	"testing"
 
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/kube"
 )
 
 func TestScanImageWithTrivyJob(t *testing.T) {

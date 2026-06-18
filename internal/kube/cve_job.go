@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manuelbuil/rke2-patcher/internal/vex"
+	"github.com/rancher/rke2-patcher/internal/vex"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,7 +23,7 @@ const (
 	cveScannerImageEnv   = "RKE2_PATCHER_CVE_SCANNER_IMAGE"
 	cveJobTimeoutEnv     = "RKE2_PATCHER_CVE_JOB_TIMEOUT"
 	defaultCVENamespace  = "rke2-patcher"
-	defaultCVEScanImage  = "aquasec/trivy:0.69.3"
+	defaultCVEScanImage  = "aquasec/trivy:0.71.1"
 	defaultCVEJobTimeout = 8 * time.Minute
 )
 

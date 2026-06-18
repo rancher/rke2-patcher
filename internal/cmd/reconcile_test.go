@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manuelbuil/rke2-patcher/internal/components"
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/kube"
 	cli "github.com/urfave/cli/v2"
 )
 

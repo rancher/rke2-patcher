@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/manuelbuil/rke2-patcher/internal/components"
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/kube"
 )
 
 const (

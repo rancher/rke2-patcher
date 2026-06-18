@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/manuelbuil/rke2-patcher/internal/components"
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/kube"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 )
 

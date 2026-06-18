@@ -65,7 +65,7 @@ jobs:
       - name: Build rke2-patcher binary
         run: |
           mkdir -p ./bin
-          CGO_ENABLED=0 go build -o ./bin/rke2-patcher .
+          CGO_ENABLED=0 go build -ldflags "-X github.com/rancher/rke2-patcher/internal/version.Version=ci" -o ./bin/rke2-patcher .
 
       - name: Load required kernel modules
         run: |

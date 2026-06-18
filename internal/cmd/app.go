@@ -8,11 +8,10 @@ import (
 
 	"github.com/manuelbuil/rke2-patcher/internal/components"
 	"github.com/manuelbuil/rke2-patcher/internal/kube"
-	"github.com/manuelbuil/rke2-patcher/internal/nodeplan"
+	patcherversion "github.com/rancher/rke2-patcher/internal/version"
 	cli "github.com/urfave/cli/v2"
 )
 
-const version = "1.2.0"
 const usageExitCode = 2
 
 var clusterVersionResolver = kube.ClusterVersion
@@ -69,7 +68,7 @@ func BuildCLIApp() *cli.App {
 			},
 			{
 				Name:      "image-patch",
-				Usage:     "Patch the component image to the latest eligible tag",
+				Usage:     "Patch the component image to the next eligible tag",
 				ArgsUsage: "<component>",
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "dry-run", Usage: "Print generated HelmChartConfig without writing"},
@@ -265,7 +264,7 @@ func printUsage() {
 	fmt.Println("Environment variables:")
 	fmt.Println("  KUBECONFIG                         kubeconfig path (first file in list is used)")
 	fmt.Println("  RKE2_PATCHER_REGISTRY              registry base URL (default: registry.rancher.com)")
-	fmt.Println("  RKE2_PATCHER_CVE_MODE              CVE scanner mode (cluster|local)")
+	fmt.Println("  RKE2_PATCHER_SCANNER_MODE              CVE scanner mode (cluster|local)")
 	fmt.Println("  RKE2_PATCHER_CVE_NAMESPACE         namespace for CVE jobs and patch-limit state ConfigMap")
 	fmt.Println("  RKE2_PATCHER_CVE_SCANNER_IMAGE     Trivy scanner image to use")
 	fmt.Println("  RKE2_PATCHER_CVE_JOB_TIMEOUT       timeout for the CVE scanner job (e.g. 5m)")
@@ -273,7 +272,7 @@ func printUsage() {
 
 // printVersion prints the version of the tool and the version of the RKE2 cluster
 func printVersion() {
-	fmt.Printf("rke2-patcher %s\n", version)
+	fmt.Printf("rke2-patcher %s\n", patcherversion.Version)
 
 	clusterVersion, err := kube.ClusterVersion()
 	if err != nil {

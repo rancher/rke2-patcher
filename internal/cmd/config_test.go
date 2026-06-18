@@ -6,7 +6,7 @@ import (
 
 func TestCollectConfigEntries_Defaults(t *testing.T) {
 	t.Setenv(registryEnvName, "")
-	t.Setenv(cveModeEnvName, "")
+	t.Setenv(scannerModeEnvName, "")
 	t.Setenv(cveNamespaceEnvName, "")
 	t.Setenv(cveScannerImageEnvName, "")
 	t.Setenv(cveJobTimeoutEnvName, "")
@@ -23,6 +23,9 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 	if registry.Source != "default" {
 		t.Fatalf("unexpected default registry source: %q", registry.Source)
 	}
+	if registry.EnvVar != registryEnvName {
+		t.Fatalf("unexpected default registry env var: %q", registry.EnvVar)
+	}
 
 	scannerMode := configEntryByKey(entries, "scanner_mode")
 	if scannerMode.Effective != "cluster" {
@@ -32,6 +35,14 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 	cveNamespace := configEntryByKey(entries, "cve_namespace")
 	if cveNamespace.Effective != "rke2-patcher" {
 		t.Fatalf("unexpected default cve namespace: %q", cveNamespace.Effective)
+	}
+	if cveNamespace.EnvVar != cveNamespaceEnvName {
+		t.Fatalf("unexpected default cve namespace env var: %q", cveNamespace.EnvVar)
+	}
+
+	stateConfigmap := configEntryByKey(entries, "rke2_patcher_state_configmap")
+	if stateConfigmap.EnvVar != "n/a" {
+		t.Fatalf("unexpected state configmap env var: %q", stateConfigmap.EnvVar)
 	}
 
 	stateNamespace := configEntryByKey(entries, "rke2_patcher_state_namespace")
@@ -52,7 +63,7 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 
 func TestCollectConfigEntries_Overrides(t *testing.T) {
 	t.Setenv(registryEnvName, "mirror.local:5000")
-	t.Setenv(cveModeEnvName, "local")
+	t.Setenv(scannerModeEnvName, "local")
 	t.Setenv(cveNamespaceEnvName, "sec-scan")
 	t.Setenv(cveScannerImageEnvName, "scanner:1.2.3")
 	t.Setenv(cveJobTimeoutEnvName, "11m")
@@ -69,13 +80,19 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 	if registry.Source != registryEnvName {
 		t.Fatalf("unexpected registry source: %q", registry.Source)
 	}
+	if registry.EnvVar != registryEnvName {
+		t.Fatalf("unexpected registry env var: %q", registry.EnvVar)
+	}
 
 	scannerMode := configEntryByKey(entries, "scanner_mode")
 	if scannerMode.Effective != "local" {
 		t.Fatalf("unexpected scanner mode effective value: %q", scannerMode.Effective)
 	}
-	if scannerMode.Source != cveModeEnvName {
+	if scannerMode.Source != scannerModeEnvName {
 		t.Fatalf("unexpected scanner mode source: %q", scannerMode.Source)
+	}
+	if scannerMode.EnvVar != scannerModeEnvName {
+		t.Fatalf("unexpected scanner mode env var: %q", scannerMode.EnvVar)
 	}
 
 	cveNamespace := configEntryByKey(entries, "cve_namespace")
@@ -100,12 +117,12 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 }
 
 func TestCollectConfigEntries_InvalidValues(t *testing.T) {
-	t.Setenv(cveModeEnvName, "invalid")
+	t.Setenv(scannerModeEnvName, "invalid")
 	if _, err := collectConfigEntries(); err == nil {
 		t.Fatalf("expected scanner mode validation error, got nil")
 	}
 
-	t.Setenv(cveModeEnvName, "cluster")
+	t.Setenv(scannerModeEnvName, "cluster")
 	t.Setenv(cveJobTimeoutEnvName, "0")
 	if _, err := collectConfigEntries(); err == nil {
 		t.Fatalf("expected timeout validation error, got nil")

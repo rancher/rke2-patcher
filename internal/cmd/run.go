@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/manuelbuil/rke2-patcher/internal/components"
-	"github.com/manuelbuil/rke2-patcher/internal/cve"
-	"github.com/manuelbuil/rke2-patcher/internal/kube"
-	"github.com/manuelbuil/rke2-patcher/internal/patcher"
-	"github.com/manuelbuil/rke2-patcher/internal/registry"
+	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/cve"
+	"github.com/rancher/rke2-patcher/internal/kube"
+	"github.com/rancher/rke2-patcher/internal/patcher"
+	"github.com/rancher/rke2-patcher/internal/registry"
 )
 
 var promptYesNoFn = promptYesNo

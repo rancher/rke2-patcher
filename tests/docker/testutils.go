@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manuelbuil/rke2-patcher/internal/vex"
+	"github.com/rancher/rke2-patcher/internal/vex"
 )
 
 const scannerNamespace = "rke2-patcher"
@@ -19,7 +19,8 @@ const nodePatcherBinaryPath = "/usr/local/bin/rke2-patcher-test"
 const podPatcherBinaryPath = "/usr/local/bin/rke2-patcher"
 const patcherNamespace = "rke2-patcher"
 const patcherReleaseName = "rke2-patcher"
-const patcherImageRepository = "mbuilsuse/rke2-patcher"
+const patcherImageRepository = "rancher/rke2-patcher"
+const TrivyVersion = "0.71.1"
 const nodePatcherImageTarballPath = "/var/lib/rancher/rke2/agent/images/rke2-patcher-test.tar"
 const testClusterToken = "testing"
 const execModeEnvName = "EXEC_MODE"
@@ -484,7 +485,7 @@ func (config *TestConfig) PreparePatcherPodExecution() error {
 
 func (config *TestConfig) BuildPatcherImage() (string, error) {
 	imageRef := patcherImageRepository + ":test"
-	buildCmd := fmt.Sprintf("cd %q && make build-image VERSION=test", config.ProjectRoot)
+	buildCmd := fmt.Sprintf("cd %q && make build-image TAG=test VERSION=test", config.ProjectRoot)
 	if out, err := RunCommand(buildCmd); err != nil {
 		return "", fmt.Errorf("failed to build patcher image %s: %s: %w", imageRef, out, err)
 	}
@@ -783,7 +784,7 @@ func (config *TestConfig) runPatcherCommand(args []string) (string, error) {
 func patcherEnvAssignments() string {
 	keys := []string{
 		"RKE2_PATCHER_REGISTRY",
-		"RKE2_PATCHER_CVE_MODE",
+		"RKE2_PATCHER_SCANNER_MODE",
 		"RKE2_PATCHER_CVE_NAMESPACE",
 		"RKE2_PATCHER_CVE_SCANNER_IMAGE",
 		"RKE2_PATCHER_CVE_JOB_TIMEOUT",

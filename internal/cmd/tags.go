@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/manuelbuil/rke2-patcher/internal/registry"
+	"github.com/rancher/rke2-patcher/internal/registry"
 )
 
 type comparableTag struct {

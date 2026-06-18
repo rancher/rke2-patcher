@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manuelbuil/rke2-patcher/internal/registry"
+	"github.com/rancher/rke2-patcher/internal/registry"
 	cli "github.com/urfave/cli/v2"
 )
 
