@@ -1,3 +1,5 @@
+name: Push to prime registry
+
 on:
   push:
     tags:
@@ -47,6 +49,8 @@ jobs:
       with:
         image: rke2-patcher
         tag: ${{ github.event.release.tag_name || env.TAG }}
+
+        push-to-public: false
 
         prime-repo: rancher
         prime-registry: ${{ env.PRIME_REGISTRY }}
