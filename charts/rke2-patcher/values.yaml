@@ -1,6 +1,6 @@
 image:
-  repository: mbuilsuse/rke2-patcher
-  tag: 1.1.0
+  repository: rancher/rke2-patcher
+  tag: 1.2.2
   pullPolicy: IfNotPresent
 
 resources: {}

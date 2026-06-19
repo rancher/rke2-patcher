@@ -8,7 +8,7 @@ VERSION ?= dev
 LDFLAGS ?= -X github.com/rancher/rke2-patcher/internal/version.Version=$(VERSION)
 
 ifeq ($(TAG),)
-TAG := v1.2.1$(BUILD_META)
+TAG := v1.2.2$(BUILD_META)
 endif
 
 ifneq ($(filter v%,$(TAG)),)
