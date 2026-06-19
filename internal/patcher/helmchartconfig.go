@@ -3,7 +3,6 @@ package patcher
 import (
 	"fmt"
 	"io"
-	"net/url"
 	"strings"
 
 	"dario.cat/mergo"
@@ -34,7 +33,7 @@ func BuildHelmChartConfig(componentName string, defaultChartConfigName string, i
 	return content, valuesContent
 }
 
-func MergeHelmChartConfigWithContents(generatedContent string, existingContents []string) (string, error) {
+func MergeHelmChartConfigWithContent(generatedContent string, existingContent string) (string, error) {
 	generatedDoc, err := parseSingleHelmChartConfig(generatedContent)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse generated HelmChartConfig: %w", err)
@@ -47,15 +46,11 @@ func MergeHelmChartConfigWithContents(generatedContent string, existingContents 
 	}
 
 	mergedSpec := map[string]any{}
-	for _, content := range existingContents {
-		spec, found, err := findMatchingSpecInContent(content, targetName, targetNamespace)
-		if err != nil {
-			return "", err
-		}
-		if !found {
-			continue
-		}
-
+	spec, found, err := findMatchingSpecInContent(existingContent, targetName, targetNamespace)
+	if err != nil {
+		return "", err
+	}
+	if found {
 		mergedSpec, err = mergeMapsWithOverride(mergedSpec, spec)
 		if err != nil {
 			return "", err
@@ -404,32 +399,6 @@ func renderValuesContent(componentName string, chartName string, imageName strin
 	return fmt.Sprintf(`    image: # change made by rke2-patcher
       repository: %s # change made by rke2-patcher
       tag: %s # change made by rke2-patcher`, imageName, imageTag)
-}
-
-// registryHostFromURL attempts to extract a registry host from a given string, which may be a full URL or just a hostname
-// If the input cannot be parsed as a URL, it will be treated as a hostname directly.
-func registryHostFromURL(envVarUrl string) string {
-	if strings.Contains(envVarUrl, "://") {
-		parsed, err := url.Parse(envVarUrl)
-		if err == nil {
-			host := strings.TrimSpace(parsed.Host)
-			if host != "" {
-				return host
-			}
-		}
-	}
-
-	trimmed := strings.Trim(envVarUrl, "/")
-	if trimmed == "" {
-		return ""
-	}
-
-	firstSlash := strings.Index(trimmed, "/")
-	if firstSlash >= 0 {
-		return strings.TrimSpace(trimmed[:firstSlash])
-	}
-
-	return trimmed
 }
 
 func imageRepositoryWithoutRegistry(imageName string) string {

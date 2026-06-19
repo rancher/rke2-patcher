@@ -29,7 +29,7 @@ spec:
       tag: new-tag
 `
 
-	merged, err := MergeHelmChartConfigWithContents(generatedContent, []string{existingContent})
+	merged, err := MergeHelmChartConfigWithContent(generatedContent, existingContent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ spec:
             tag: v3.6.12-build20260409 # change made by rke2-patcher
 `
 
-	merged, err := MergeHelmChartConfigWithContents(generatedContent, []string{existingContent})
+	merged, err := MergeHelmChartConfigWithContent(generatedContent, existingContent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

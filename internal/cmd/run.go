@@ -227,18 +227,16 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 		return err
 	}
 
-	// If there are no conflicts, contentToWrite remains as generatedContent
+	// If there is no existing object, contentToWrite remains as generatedContent.
 	contentToWrite := generatedContent
-	conflicts, err := kube.ListHelmChartConfigsByIdentity(targetName, targetNamespace)
+	conflict, err := kube.GetHelmChartConfigByIdentity(targetName, targetNamespace)
 	if err != nil {
 		return err
 	}
 
-	if len(conflicts) > 0 {
+	if conflict != nil {
 		fmt.Printf("warning: found a HelmChartConfig object in the cluster for this component:\n")
-		for _, conflict := range conflicts {
-			fmt.Printf("- %s/%s\n", conflict.Namespace, conflict.Name)
-		}
+		fmt.Printf("- %s/%s\n", conflict.Namespace, conflict.Name)
 
 		if !options.AutoApprove {
 			firstConfirm, err := promptYesNoFn("Merging generated and existing HelmChartConfig values will be tried. Continue? [Yes/No]: ")
@@ -253,12 +251,7 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 			fmt.Println("auto-approve enabled: proceeding with merge")
 		}
 
-		existingContents := make([]string, 0, len(conflicts))
-		for _, conflict := range conflicts {
-			existingContents = append(existingContents, conflict.Content)
-		}
-
-		mergedContent, err := patcher.MergeHelmChartConfigWithContents(generatedContent, existingContents)
+		mergedContent, err := patcher.MergeHelmChartConfigWithContent(generatedContent, conflict.Content)
 		if err != nil {
 			return err
 		}
@@ -391,16 +384,15 @@ func reconcileEntry(entry patchEntry) (bool, error) {
 	case "rke2-canal-flannel":
 		resourceName = "rke2-canal"
 	}
-	configs, err := kube.ListHelmChartConfigsByIdentity(resourceName, "kube-system")
+	conflict, err := kube.GetHelmChartConfigByIdentity(resourceName, "kube-system")
 	if err != nil {
-		return false, fmt.Errorf("failed to list HelmChartConfig for reconciliation: %w", err)
+		return false, fmt.Errorf("failed to get HelmChartConfig for reconciliation: %w", err)
 	}
-	if len(configs) == 0 {
+	if conflict == nil {
 		return false, nil // nothing to reconcile
 	}
 
-	// Use the first found config
-	existingContent := strings.TrimSpace(configs[0].Content)
+	existingContent := strings.TrimSpace(conflict.Content)
 	if existingContent == "" {
 		return false, nil
 	}
