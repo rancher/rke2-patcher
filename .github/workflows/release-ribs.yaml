@@ -79,7 +79,7 @@ jobs:
           echo "Uploaded artifacts to $S3_PATH"
 
       - name: setup ecm-distro-tools
-        uses: rancher/ecm-distro-tools@9dec9a5ec7519c042400721c01115152e9693a1e # v0.74.1
+        uses: rancher/ecm-distro-tools@016551c414f82e64af8c4c18315ea3093d10be7c # v0.74.3
 
       - name: Generate prime ribs index
         run: |
