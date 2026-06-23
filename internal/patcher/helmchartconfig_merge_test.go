@@ -140,6 +140,19 @@ func TestMergeValuesContent_ExistingEmpty_NormalizesIncomingIndentation(t *testi
 	}
 }
 
+func TestMergeValuesContent_ExistingEmpty_ProperlyIndentedPreservedAsIs(t *testing.T) {
+	incoming := "    image:\n      repository: rancher/hardened-traefik\n      tag: new-tag"
+
+	merged, err := mergeValuesContent("", incoming)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if merged != incoming {
+		t.Fatalf("expected already-indented content to be preserved as-is\nwant:\n%s\ngot:\n%s", incoming, merged)
+	}
+}
+
 func TestMergeValuesContent_IncomingEmpty_NormalizesExistingIndentation(t *testing.T) {
 	existing := "providers:\n  kubernetesGateway:\n    enabled: true"
 
@@ -168,16 +181,17 @@ func TestMergeHelmChartConfigWithContents_NoExistingMatch_NormalizesGenerated(t 
 		"      repository: rancher/hardened-traefik\n" +
 		"      tag: new-tag\n"
 
-	unrelatedContent := "apiVersion: helm.cattle.io/v1\n" +
+	unemptyContent := "apiVersion: helm.cattle.io/v1\n" +
 		"kind: HelmChartConfig\n" +
 		"metadata:\n" +
-		"  name: rke2-coredns\n" +
+		"  name: rke2-traefik\n" +
 		"  namespace: kube-system\n" +
 		"spec:\n" +
 		"  valuesContent: |-\n" +
-		"    foo: bar\n"
+		"    service:\n" +
+		"      type: ClusterIP\n"
 
-	merged, err := MergeHelmChartConfigWithContents(generatedContent, []string{unrelatedContent})
+	merged, err := MergeHelmChartConfigWithContent(generatedContent, unemptyContent)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -213,7 +227,7 @@ spec:
   valuesContent: ""
 `
 
-	merged, err := MergeHelmChartConfigWithContents(generatedContent, []string{existingAfterReconcile})
+	merged, err := MergeHelmChartConfigWithContent(generatedContent, existingAfterReconcile)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

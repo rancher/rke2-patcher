@@ -192,13 +192,15 @@ func ensureProperIndentation(content string) string {
 // isProperlyIndented checks if all non-empty lines start with at least 4 spaces.
 // This indicates the content is already formatted for use as a YAML block scalar value.
 func isProperlyIndented(content string) bool {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
+	if strings.TrimSpace(content) == "" {
 		return true // Empty is considered "properly indented"
 	}
-	lines := strings.Split(trimmed, "\n")
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	for _, line := range lines {
-		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "    ") {
 			return false
 		}
 	}
@@ -288,63 +290,6 @@ func mergeValuesContent(existing string, incoming string) (string, error) {
 	for i, line := range lines {
 		lines[i] = "    " + line
 	}
-	return strings.Join(lines, "\n"), nil
-}
-
-// ensureProperIndentation adds 4-space indentation to each line that doesn't already have it.
-// This preserves any existing indentation (for nested keys) and comments while ensuring the
-// top-level content is indented for block scalar display.
-func ensureProperIndentation(content string) string {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return ""
-	}
-	lines := strings.Split(trimmed, "\n")
-	for i, line := range lines {
-		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
-			lines[i] = "    " + line
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// isProperlyIndented checks if all non-empty lines start with at least 4 spaces.
-// This indicates the content is already formatted for use as a YAML block scalar value.
-func isProperlyIndented(content string) bool {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return true // Empty is considered "properly indented"
-	}
-	lines := strings.Split(trimmed, "\n")
-	for _, line := range lines {
-		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
-			return false
-		}
-	}
-	return true
-}
-
-func normalizeValuesContent(content string) (string, error) {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return "", nil
-	}
-
-	var values any
-	if err := yaml.Unmarshal([]byte(trimmed), &values); err != nil {
-		return "", fmt.Errorf("failed to parse valuesContent: %w", err)
-	}
-
-	b, err := yaml.Marshal(values)
-	if err != nil {
-		return "", err
-	}
-
-	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-	for i, line := range lines {
-		lines[i] = "    " + line
-	}
-
 	return strings.Join(lines, "\n"), nil
 }
 
