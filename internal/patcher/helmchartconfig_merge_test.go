@@ -123,3 +123,107 @@ spec:
 		}
 	}
 }
+
+func TestMergeValuesContent_ExistingEmpty_NormalizesIncomingIndentation(t *testing.T) {
+	incoming := "image:\n  repository: rancher/hardened-traefik\n  tag: new-tag"
+
+	merged, err := mergeValuesContent("", incoming)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(merged, "    image:") {
+		t.Fatalf("expected normalized indentation for top-level key, got:\n%s", merged)
+	}
+	if strings.HasPrefix(merged, "image:") {
+		t.Fatalf("expected content to be indented, got:\n%s", merged)
+	}
+}
+
+func TestMergeValuesContent_IncomingEmpty_NormalizesExistingIndentation(t *testing.T) {
+	existing := "providers:\n  kubernetesGateway:\n    enabled: true"
+
+	merged, err := mergeValuesContent(existing, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(merged, "    providers:") {
+		t.Fatalf("expected normalized indentation for top-level key, got:\n%s", merged)
+	}
+	if strings.HasPrefix(merged, "providers:") {
+		t.Fatalf("expected content to be indented, got:\n%s", merged)
+	}
+}
+
+func TestMergeHelmChartConfigWithContents_NoExistingMatch_NormalizesGenerated(t *testing.T) {
+	generatedContent := "apiVersion: helm.cattle.io/v1\n" +
+		"kind: HelmChartConfig\n" +
+		"metadata:\n" +
+		"  name: rke2-traefik\n" +
+		"  namespace: kube-system\n" +
+		"spec:\n" +
+		"  valuesContent: |-\n" +
+		"    image:\n" +
+		"      repository: rancher/hardened-traefik\n" +
+		"      tag: new-tag\n"
+
+	unrelatedContent := "apiVersion: helm.cattle.io/v1\n" +
+		"kind: HelmChartConfig\n" +
+		"metadata:\n" +
+		"  name: rke2-coredns\n" +
+		"  namespace: kube-system\n" +
+		"spec:\n" +
+		"  valuesContent: |-\n" +
+		"    foo: bar\n"
+
+	merged, err := MergeHelmChartConfigWithContents(generatedContent, []string{unrelatedContent})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(merged, "repository: rancher/hardened-traefik") {
+		t.Fatalf("expected generated image repository in output, got:\n%s", merged)
+	}
+
+	// Verify proper indentation: valuesContent block should be indented 4 spaces
+	if !strings.Contains(merged, "    image:") {
+		t.Fatalf("expected indented image key in valuesContent block, got:\n%s", merged)
+	}
+	if strings.Contains(merged, "\nimage:") {
+		t.Fatalf("expected image key to be indented under valuesContent, not at line start, got:\n%s", merged)
+	}
+}
+
+func TestMergeHelmChartConfigWithContents_AfterReconcileEmptyValuesContent_ProducesIndentedValuesBlock(t *testing.T) {
+	generatedContent, _ := BuildHelmChartConfig(
+		"rke2-coredns",
+		"rke2-coredns",
+		"registry.rancher.com/rancher/hardened-coredns",
+		"v1.14.3-build20260604",
+	)
+
+	existingAfterReconcile := `apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-coredns
+  namespace: kube-system
+spec:
+  failurePolicy: reinstall
+  valuesContent: ""
+`
+
+	merged, err := MergeHelmChartConfigWithContents(generatedContent, []string{existingAfterReconcile})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(merged, "\nimage: # change made by rke2-patcher") {
+		t.Fatalf("expected image key to remain indented under valuesContent, got:\n%s", merged)
+	}
+
+	if !strings.Contains(merged, "valuesContent: |-\n    image: # change made by rke2-patcher") {
+		t.Fatalf("expected valuesContent block to include correctly indented image key, got:\n%s", merged)
+	}
+
+}

@@ -35,55 +35,70 @@ func BuildHelmChartConfig(componentName string, defaultChartConfigName string, i
 }
 
 func MergeHelmChartConfigWithContent(generatedContent string, existingContent string) (string, error) {
-	generatedDoc, err := parseSingleHelmChartConfig(generatedContent)
+	generatedHcc, err := parseSingleHelmChartConfig(generatedContent)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse generated HelmChartConfig: %w", err)
 	}
 
-	targetName := strings.TrimSpace(generatedDoc.Name)
-	targetNamespace := strings.TrimSpace(generatedDoc.Namespace)
+	targetName := strings.TrimSpace(generatedHcc.Name)
+	targetNamespace := strings.TrimSpace(generatedHcc.Namespace)
 	if targetName == "" || targetNamespace == "" {
 		return "", fmt.Errorf("generated HelmChartConfig is missing metadata.name or metadata.namespace")
 	}
 
-	mergedDoc := generatedDoc.DeepCopy()
+	mergedHcc := generatedHcc.DeepCopy()
+	var mergedSpec helmcontrollerv1.HelmChartConfigSpec
+	foundExisting := false
 
 	// If there's existing content, merge it
 	if strings.TrimSpace(existingContent) != "" {
-		existingDoc, err := parseSingleHelmChartConfig(existingContent)
+		existingHcc, err := parseSingleHelmChartConfig(existingContent)
 		if err != nil {
 			return "", fmt.Errorf("failed to parse existing HelmChartConfig: %w", err)
 		}
 
-		if strings.TrimSpace(existingDoc.Name) == targetName && strings.TrimSpace(existingDoc.Namespace) == targetNamespace {
-			mergedSpec, err := mergeHelmChartConfigSpec(existingDoc.Spec, mergedDoc.Spec)
+		if strings.TrimSpace(existingHcc.Name) == targetName && strings.TrimSpace(existingHcc.Namespace) == targetNamespace {
+			mergedSpec, err = mergeHelmChartConfigSpec(existingHcc.Spec, generatedHcc.Spec)
 			if err != nil {
 				return "", err
 			}
-			mergedDoc.Spec = mergedSpec
+			// Start from the existing object so metadata and non-valuesContent spec fields are preserved.
+			mergedHcc = existingHcc.DeepCopy()
+			foundExisting = true
 		}
 	}
 
-	if strings.TrimSpace(mergedDoc.APIVersion) == "" {
-		mergedDoc.APIVersion = "helm.cattle.io/v1"
-	}
-	if strings.TrimSpace(mergedDoc.Kind) == "" {
-		mergedDoc.Kind = "HelmChartConfig"
+	// If no existing was found, normalize the generated spec through the standard path to ensure indentation.
+	if !foundExisting {
+		var err error
+		mergedSpec, err = mergeHelmChartConfigSpec(helmcontrollerv1.HelmChartConfigSpec{}, generatedHcc.Spec)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	name := strings.TrimSpace(mergedDoc.Name)
-	namespace := strings.TrimSpace(mergedDoc.Namespace)
-	return renderHelmChartConfig(name, namespace, mergedDoc.Spec.ValuesContent), nil
+	mergedHcc.Spec = mergedSpec
+	if strings.TrimSpace(mergedHcc.APIVersion) == "" {
+		mergedHcc.APIVersion = "helm.cattle.io/v1"
+	}
+	if strings.TrimSpace(mergedHcc.Kind) == "" {
+		mergedHcc.Kind = "HelmChartConfig"
+	}
+
+	name := strings.TrimSpace(mergedHcc.Name)
+	namespace := strings.TrimSpace(mergedHcc.Namespace)
+	return renderHelmChartConfig(name, namespace, mergedHcc.Spec.ValuesContent), nil
 }
 
+// HelmChartConfigIdentityFromContent extracts the metadata.name and metadata.namespace from a HelmChartConfig YAML
 func HelmChartConfigIdentityFromContent(content string) (string, string, error) {
-	doc, err := parseSingleHelmChartConfig(content)
+	hcc, err := parseSingleHelmChartConfig(content)
 	if err != nil {
 		return "", "", err
 	}
 
-	name := strings.TrimSpace(doc.Name)
-	namespace := strings.TrimSpace(doc.Namespace)
+	name := strings.TrimSpace(hcc.Name)
+	namespace := strings.TrimSpace(hcc.Namespace)
 	if name == "" || namespace == "" {
 		return "", "", fmt.Errorf("HelmChartConfig content missing metadata.name or metadata.namespace")
 	}
@@ -91,6 +106,7 @@ func HelmChartConfigIdentityFromContent(content string) (string, string, error) 
 	return name, namespace, nil
 }
 
+// parseSingleHelmChartConfig parses a YAML into a proper HelmChartConfig object
 func parseSingleHelmChartConfig(content string) (*helmcontrollerv1.HelmChartConfig, error) {
 	decoder := yaml.NewDecoder(strings.NewReader(content))
 	for {
@@ -111,19 +127,20 @@ func parseSingleHelmChartConfig(content string) (*helmcontrollerv1.HelmChartConf
 			return nil, err
 		}
 
-		var doc helmcontrollerv1.HelmChartConfig
-		if err := syaml.Unmarshal(raw, &doc); err != nil {
+		var hcc helmcontrollerv1.HelmChartConfig
+		if err := syaml.Unmarshal(raw, &hcc); err != nil {
 			return nil, err
 		}
 
-		if strings.EqualFold(strings.TrimSpace(doc.Kind), "HelmChartConfig") {
-			return &doc, nil
+		if strings.EqualFold(strings.TrimSpace(hcc.Kind), "HelmChartConfig") {
+			return &hcc, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no HelmChartConfig document found")
+	return nil, fmt.Errorf("no HelmChartConfig found")
 }
 
+// mergeHelmChartConfigSpec takes two HelmChartConfigSpec objects and merges them
 func mergeHelmChartConfigSpec(existing helmcontrollerv1.HelmChartConfigSpec, generated helmcontrollerv1.HelmChartConfigSpec) (helmcontrollerv1.HelmChartConfigSpec, error) {
 	merged := existing
 	combinedValues, err := mergeValuesContent(existing.ValuesContent, generated.ValuesContent)
@@ -155,15 +172,89 @@ func mergeMapsWithOverride(base map[string]any, overlay map[string]any) (map[str
 	return result, nil
 }
 
+// ensureProperIndentation adds 4-space indentation to each line that doesn't already have it.
+// This preserves any existing indentation (for nested keys) and comments while ensuring the
+// top-level content is indented for block scalar display.
+func ensureProperIndentation(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	lines := strings.Split(trimmed, "\n")
+	for i, line := range lines {
+		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
+			lines[i] = "    " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// isProperlyIndented checks if all non-empty lines start with at least 4 spaces.
+// This indicates the content is already formatted for use as a YAML block scalar value.
+func isProperlyIndented(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return true // Empty is considered "properly indented"
+	}
+	lines := strings.Split(trimmed, "\n")
+	for _, line := range lines {
+		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeValuesContent parses YAML content, re-marshals it, and adds proper indentation.
+func normalizeValuesContent(content string) (string, error) {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	var values any
+	if err := yaml.Unmarshal([]byte(trimmed), &values); err != nil {
+		return "", fmt.Errorf("failed to parse valuesContent: %w", err)
+	}
+
+	b, err := yaml.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = "    " + line
+	}
+
+	return strings.Join(lines, "\n"), nil
+}
+
 func mergeValuesContent(existing string, incoming string) (string, error) {
 	existingTrimmed := strings.TrimSpace(existing)
 	incomingTrimmed := strings.TrimSpace(incoming)
 
 	if existingTrimmed == "" {
-		return incoming, nil
+		// If incoming already has patcher comments, preserve them by adding indentation if needed.
+		if strings.Contains(incoming, "# change made by rke2-patcher") {
+			return ensureProperIndentation(incoming), nil
+		}
+		// If properly indented, preserve as-is. Otherwise normalize.
+		if isProperlyIndented(incoming) {
+			return incoming, nil
+		}
+		return normalizeValuesContent(incoming)
 	}
 	if incomingTrimmed == "" {
-		return existing, nil
+		// Same for existing: preserve patcher comments with proper indentation.
+		if strings.Contains(existing, "# change made by rke2-patcher") {
+			return ensureProperIndentation(existing), nil
+		}
+		// If properly indented, preserve as-is. Otherwise normalize.
+		if isProperlyIndented(existing) {
+			return existing, nil
+		}
+		return normalizeValuesContent(existing)
 	}
 
 	var existingValues any
@@ -200,12 +291,69 @@ func mergeValuesContent(existing string, incoming string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+// ensureProperIndentation adds 4-space indentation to each line that doesn't already have it.
+// This preserves any existing indentation (for nested keys) and comments while ensuring the
+// top-level content is indented for block scalar display.
+func ensureProperIndentation(content string) string {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return ""
+	}
+	lines := strings.Split(trimmed, "\n")
+	for i, line := range lines {
+		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
+			lines[i] = "    " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// isProperlyIndented checks if all non-empty lines start with at least 4 spaces.
+// This indicates the content is already formatted for use as a YAML block scalar value.
+func isProperlyIndented(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return true // Empty is considered "properly indented"
+	}
+	lines := strings.Split(trimmed, "\n")
+	for _, line := range lines {
+		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeValuesContent(content string) (string, error) {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	var values any
+	if err := yaml.Unmarshal([]byte(trimmed), &values); err != nil {
+		return "", fmt.Errorf("failed to parse valuesContent: %w", err)
+	}
+
+	b, err := yaml.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = "    " + line
+	}
+
+	return strings.Join(lines, "\n"), nil
+}
+
 func SubtractPatcherValuesContent(existingFileContent, generatedValuesContent string) (string, error) {
-	existingDoc, err := parseSingleHelmChartConfig(existingFileContent)
+	existingHcc, err := parseSingleHelmChartConfig(existingFileContent)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse existing HelmChartConfig: %w", err)
 	}
-	existingValuesStr := strings.TrimSpace(existingDoc.Spec.ValuesContent)
+	existingValuesStr := strings.TrimSpace(existingHcc.Spec.ValuesContent)
 	if existingValuesStr == "" {
 		return existingFileContent, nil
 	}
@@ -227,7 +375,7 @@ func SubtractPatcherValuesContent(existingFileContent, generatedValuesContent st
 
 	resultValues := deepSubtractMap(existingValues, generatedValues)
 
-	updatedSpec := existingDoc.Spec
+	updatedSpec := existingHcc.Spec
 	if len(resultValues) == 0 {
 		updatedSpec.ValuesContent = ""
 	} else {
@@ -243,8 +391,8 @@ func SubtractPatcherValuesContent(existingFileContent, generatedValuesContent st
 		updatedSpec.ValuesContent = strings.Join(lines, "\n")
 	}
 
-	name := strings.TrimSpace(existingDoc.Name)
-	namespace := strings.TrimSpace(existingDoc.Namespace)
+	name := strings.TrimSpace(existingHcc.Name)
+	namespace := strings.TrimSpace(existingHcc.Namespace)
 	valuesContent := updatedSpec.ValuesContent
 	return renderHelmChartConfig(name, namespace, valuesContent), nil
 }
