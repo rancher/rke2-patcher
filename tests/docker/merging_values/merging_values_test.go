@@ -25,6 +25,21 @@ var (
 	tc *docker.TestConfig
 )
 
+var traefikPreservedFields = []string{
+	"app.kubernetes.io/managed-by: test-suite",
+	"test.rke2-patcher.io/preserve: \"true\"",
+	"failurePolicy: abort",
+	"kubernetesGateway:",
+}
+
+var traefikPatchedFields = []string{
+	"app.kubernetes.io/managed-by: test-suite",
+	"test.rke2-patcher.io/preserve: \"true\"",
+	"failurePolicy: abort",
+	"kubernetesGateway:",
+	"repository: rancher/hardened-traefik",
+}
+
 func Test_DockerPatchComponents(t *testing.T) {
 	RegisterFailHandler(Fail)
 	flag.Parse()
@@ -64,7 +79,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 			}, "200s", "5s").Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				g.Expect(tc.CheckTraefikGwAPI()).To(Succeed())
+				g.Expect(tc.CheckTraefikGwAPIAndHelmChartConfig(traefikPreservedFields, nil)).To(Succeed())
 			}, "200s", "5s").Should(Succeed())
 		})
 	})
@@ -97,7 +112,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 			}, "200s", "5s").Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				g.Expect(tc.CheckTraefikGwAPI()).To(Succeed())
+				g.Expect(tc.CheckTraefikGwAPIAndHelmChartConfig(traefikPatchedFields, nil)).To(Succeed())
 			}, "200s", "5s").Should(Succeed())
 		})
 	})
@@ -130,7 +145,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	Context("Verify HelmChartConfig for rke2-traefik", func() {
 		It("verifies the HelmChartConfig for rke2-traefik still exists with gatewayAPI", func() {
 			Eventually(func(g Gomega) {
-				g.Expect(tc.CheckTraefikGwAPI()).To(Succeed())
+				g.Expect(tc.CheckTraefikGwAPIAndHelmChartConfig(traefikPreservedFields, []string{"repository: rancher/hardened-traefik"})).To(Succeed())
 			}, "200s", "5s").Should(Succeed())
 		})
 	})

@@ -627,8 +627,9 @@ func (config *TestConfig) CheckNodeLocalDNS() error {
 	)
 }
 
-// CheckTraefikGwAPI verifies rke2-traefik DaemonSet is ready and logs contain 'providerName=kubernetesgateway'.
-func (config *TestConfig) CheckTraefikGwAPI() error {
+// CheckTraefikGwAPIAndHelmChartConfig verifies rke2-traefik DaemonSet is ready and logs contain 'providerName=kubernetesgateway'
+// and the HelmChartConfig contains the expected preserved and patched content.
+func (config *TestConfig) CheckTraefikGwAPIAndHelmChartConfig(expectedPresent, expectedAbsent []string) error {
 	// Check DaemonSet readiness
 	if err := config.CheckResourcesReady(nil, []string{"rke2-traefik"}, "30s"); err != nil {
 		return err
@@ -661,6 +662,24 @@ func (config *TestConfig) CheckTraefikGwAPI() error {
 	if !found {
 		return fmt.Errorf("rke2-traefik logs do not contain 'kubernetesgateway'")
 	}
+
+	helmChartConfig, err := config.Server.RunKubectl("-n kube-system get helmchartconfig rke2-traefik -o yaml")
+	if err != nil {
+		return fmt.Errorf("failed to get rke2-traefik HelmChartConfig: %w", err)
+	}
+
+	for _, expected := range expectedPresent {
+		if !strings.Contains(helmChartConfig, expected) {
+			return fmt.Errorf("rke2-traefik HelmChartConfig missing %q", expected)
+		}
+	}
+
+	for _, unexpected := range expectedAbsent {
+		if strings.Contains(helmChartConfig, unexpected) {
+			return fmt.Errorf("rke2-traefik HelmChartConfig unexpectedly contains %q", unexpected)
+		}
+	}
+
 	return nil
 }
 
@@ -984,7 +1003,11 @@ kind: HelmChartConfig
 metadata:
   name: rke2-traefik
   namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: test-suite
+    test.rke2-patcher.io/preserve: "true"
 spec:
+  failurePolicy: abort
   valuesContent: |-
     providers:
       kubernetesGateway:

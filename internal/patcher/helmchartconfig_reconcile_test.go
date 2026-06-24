@@ -11,7 +11,14 @@ kind: HelmChartConfig
 metadata:
   name: rke2-traefik
   namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: test-suite
+    test.rke2-patcher.io/preserve: "true"
 spec:
+  failurePolicy: abort
+  valuesSecrets:
+  - name: my-secret
+    path: values
   valuesContent: |-
     image:
       repository: rancher/hardened-traefik
@@ -33,6 +40,16 @@ spec:
 
 	if !strings.Contains(result, "type: ClusterIP") {
 		t.Fatalf("expected user service values to be preserved, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "app.kubernetes.io/managed-by: test-suite") || !strings.Contains(result, "test.rke2-patcher.io/preserve: \"true\"") {
+		t.Fatalf("expected labels to be preserved, got:\n%s", result)
+	}
+	if !strings.Contains(result, "failurePolicy: abort") {
+		t.Fatalf("expected failurePolicy to be preserved, got:\n%s", result)
+	}
+	if !strings.Contains(result, "my-secret") || !strings.Contains(result, "valuesSecrets:") {
+		t.Fatalf("expected valuesSecrets to be preserved, got:\n%s", result)
 	}
 }
 

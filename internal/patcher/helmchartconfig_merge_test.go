@@ -11,7 +11,14 @@ kind: HelmChartConfig
 metadata:
   name: rke2-traefik
   namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: test-suite
+    test.rke2-patcher.io/preserve: "true"
+  annotations:
+    description: "Traefik ingress controller configuration"
+    updated-by: "user"
 spec:
+  failurePolicy: abort
   valuesContent: |-
     service:
       type: ClusterIP
@@ -39,6 +46,15 @@ spec:
 	}
 	if !strings.Contains(merged, "repository: rancher/hardened-traefik") || !strings.Contains(merged, "tag: new-tag") {
 		t.Fatalf("expected merged content to include generated image values: %s", merged)
+	}
+	if !strings.Contains(merged, "app.kubernetes.io/managed-by: test-suite") || !strings.Contains(merged, "test.rke2-patcher.io/preserve: \"true\"") {
+		t.Fatalf("expected merged content to preserve labels: %s", merged)
+	}
+	if !strings.Contains(merged, "failurePolicy: abort") {
+		t.Fatalf("expected merged content to preserve failurePolicy: %s", merged)
+	}
+	if !strings.Contains(merged, "description:") || !strings.Contains(merged, "Traefik ingress controller configuration") || !strings.Contains(merged, "updated-by:") || !strings.Contains(merged, "user") {
+		t.Fatalf("expected merged content to preserve annotations: %s", merged)
 	}
 }
 

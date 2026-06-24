@@ -48,7 +48,6 @@ func MergeHelmChartConfigWithContent(generatedContent string, existingContent st
 
 	mergedHcc := generatedHcc.DeepCopy()
 	var mergedSpec helmcontrollerv1.HelmChartConfigSpec
-	foundExisting := false
 
 	// If there's existing content, merge it
 	if strings.TrimSpace(existingContent) != "" {
@@ -62,22 +61,20 @@ func MergeHelmChartConfigWithContent(generatedContent string, existingContent st
 			if err != nil {
 				return "", err
 			}
-			// Start from the existing object so metadata and non-valuesContent spec fields are preserved.
+			// Start from the existing object so metadata is preserved
 			mergedHcc = existingHcc.DeepCopy()
-			foundExisting = true
+			mergedHcc.Spec = mergedSpec
 		}
-	}
-
-	// If no existing was found, normalize the generated spec through the standard path to ensure indentation.
-	if !foundExisting {
+	} else {
+		// No existing, just normalize the generated spec through the standard merge path
 		var err error
 		mergedSpec, err = mergeHelmChartConfigSpec(helmcontrollerv1.HelmChartConfigSpec{}, generatedHcc.Spec)
 		if err != nil {
 			return "", err
 		}
+		mergedHcc.Spec = mergedSpec
 	}
 
-	mergedHcc.Spec = mergedSpec
 	if strings.TrimSpace(mergedHcc.APIVersion) == "" {
 		mergedHcc.APIVersion = "helm.cattle.io/v1"
 	}
@@ -85,9 +82,16 @@ func MergeHelmChartConfigWithContent(generatedContent string, existingContent st
 		mergedHcc.Kind = "HelmChartConfig"
 	}
 
-	name := strings.TrimSpace(mergedHcc.Name)
-	namespace := strings.TrimSpace(mergedHcc.Namespace)
-	return renderHelmChartConfig(name, namespace, mergedHcc.Spec.ValuesContent), nil
+	// Deindent valuesContent before marshaling to get stable block scalar format
+	mergedHcc.Spec.ValuesContent = deindentValuesContent(mergedHcc.Spec.ValuesContent)
+
+	// Render the merged HelmChartConfig from the typed object
+	contentBytes, err := syaml.Marshal(mergedHcc)
+	if err != nil {
+		return "", fmt.Errorf("failed to render HelmChartConfig: %w", err)
+	}
+
+	return string(contentBytes), nil
 }
 
 // HelmChartConfigIdentityFromContent extracts the metadata.name and metadata.namespace from a HelmChartConfig YAML
@@ -232,6 +236,39 @@ func normalizeValuesContent(content string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+// deindentValuesContent removes one top-level indentation layer (4 spaces).
+// This allows syaml.Marshal to emit a stable block scalar format (|-) not |2-.
+func deindentValuesContent(content string) string {
+	if strings.TrimSpace(content) == "" {
+		return ""
+	}
+
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	allIndented := true
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "    ") {
+			allIndented = false
+			break
+		}
+	}
+
+	if !allIndented {
+		return content
+	}
+
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		lines[i] = strings.TrimPrefix(line, "    ")
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func mergeValuesContent(existing string, incoming string) (string, error) {
 	existingTrimmed := strings.TrimSpace(existing)
 	incomingTrimmed := strings.TrimSpace(incoming)
@@ -298,6 +335,7 @@ func SubtractPatcherValuesContent(existingFileContent, generatedValuesContent st
 	if err != nil {
 		return "", fmt.Errorf("failed to parse existing HelmChartConfig: %w", err)
 	}
+
 	existingValuesStr := strings.TrimSpace(existingHcc.Spec.ValuesContent)
 	if existingValuesStr == "" {
 		return existingFileContent, nil
@@ -336,10 +374,18 @@ func SubtractPatcherValuesContent(existingFileContent, generatedValuesContent st
 		updatedSpec.ValuesContent = strings.Join(lines, "\n")
 	}
 
-	name := strings.TrimSpace(existingHcc.Name)
-	namespace := strings.TrimSpace(existingHcc.Namespace)
-	valuesContent := updatedSpec.ValuesContent
-	return renderHelmChartConfig(name, namespace, valuesContent), nil
+	existingHcc.Spec = updatedSpec
+
+	// Deindent valuesContent before marshaling to get stable block scalar format
+	existingHcc.Spec.ValuesContent = deindentValuesContent(existingHcc.Spec.ValuesContent)
+
+	// Render the updated HelmChartConfig from the typed object
+	contentBytes, err := syaml.Marshal(existingHcc)
+	if err != nil {
+		return "", fmt.Errorf("failed to render HelmChartConfig: %w", err)
+	}
+
+	return string(contentBytes), nil
 }
 
 func deepSubtractMap(base, toRemove map[string]any) map[string]any {
