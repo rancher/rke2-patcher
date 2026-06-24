@@ -627,7 +627,7 @@ func (config *TestConfig) CheckNodeLocalDNS() error {
 	)
 }
 
-// CheckTraefikGwAPIAndHelmChartConfig verifies rke2-traefik DaemonSet is ready and logs contain 'providerName=kubernetesgateway'
+// CheckTraefikGwAPIAndHelmChartConfig verifies rke2-traefik DaemonSet is ready and logs contain 'kubernetesgateway'
 // and the HelmChartConfig contains the expected preserved and patched content.
 func (config *TestConfig) CheckTraefikGwAPIAndHelmChartConfig(expectedPresent, expectedAbsent []string) error {
 	// Check DaemonSet readiness

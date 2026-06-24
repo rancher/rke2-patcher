@@ -54,6 +54,28 @@ func kubeDynamicClient() (dynamic.Interface, error) {
 // GetHelmChartConfigByIdentity is a variable for testability, delegates to getHelmChartConfigByIdentityImpl.
 var GetHelmChartConfigByIdentity = getHelmChartConfigByIdentityImpl
 
+// cleanObjectMeta removes server-managed fields from ObjectMeta while preserving user-facing metadata.
+// This prevents bloated output and unintended diffs when merging/applying.
+// Removed: resourceVersion, uid, generation, creationTimestamp, managedFields, selfLink.
+// Preserved: name, namespace, labels, annotations, ownerReferences, finalizers.
+func cleanObjectMeta(om *metav1.ObjectMeta) {
+	om.ResourceVersion = ""
+	om.UID = ""
+	om.Generation = 0
+	om.CreationTimestamp = metav1.Time{}
+	om.DeletionTimestamp = nil
+	om.DeletionGracePeriodSeconds = nil
+	om.ManagedFields = nil
+	om.SelfLink = ""
+}
+
+// dropStatusField removes the status field from an unstructured object.
+// The status field is server-managed and can cause noisy diffs or apply rejections
+// on CRDs with status subresources. We only care about metadata and spec.
+func dropStatusField(obj map[string]interface{}) {
+	delete(obj, "status")
+}
+
 // getHelmChartConfigByIdentityImpl retrieves a HelmChartConfigObject by its name and namespace.
 func getHelmChartConfigByIdentityImpl(name string, namespace string) (*HelmChartConfigObject, error) {
 	trimmedName := strings.TrimSpace(name)
@@ -79,6 +101,10 @@ func getHelmChartConfigByIdentityImpl(name string, namespace string) (*HelmChart
 		return nil, fmt.Errorf("failed to get helmchartconfig %s/%s: %w", trimmedNamespace, trimmedName, err)
 	}
 
+	// Drop the status field which is server-managed and can cause noisy diffs or apply rejections.
+	// We only care about metadata and spec for merge/apply operations.
+	dropStatusField(item.Object)
+
 	// Marshal the unstructured object to JSON/YAML and unmarshal into the typed struct.
 	// This preserves all ObjectMeta fields (labels, annotations, etc.) via the typed struct's
 	// metav1.ObjectMeta, unlike a custom reduced struct that only captures name/namespace.
@@ -91,6 +117,11 @@ func getHelmChartConfigByIdentityImpl(name string, namespace string) (*HelmChart
 	if err := syaml.Unmarshal(rawBytes, &hcc); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal HelmChartConfig: %w", err)
 	}
+
+	// Strip server-managed ObjectMeta fields while preserving user-facing metadata.
+	// Server fields like resourceVersion, uid, generation, creationTimestamp, managedFields
+	// should not be included in the merge output.
+	cleanObjectMeta(&hcc.ObjectMeta)
 
 	if strings.TrimSpace(hcc.APIVersion) == "" {
 		hcc.APIVersion = "helm.cattle.io/v1"
