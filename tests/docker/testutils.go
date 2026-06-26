@@ -627,6 +627,16 @@ func (config *TestConfig) CheckNodeLocalDNS() error {
 	)
 }
 
+func (config *TestConfig) GetHelmChartConfigYAML(namespace, name string) (string, error) {
+	getCmd := fmt.Sprintf("-n %s get helmchartconfig %s -o yaml", namespace, name)
+	out, err := config.Server.RunKubectl(getCmd)
+	if err != nil {
+		return "", fmt.Errorf("failed to get HelmChartConfig %s/%s: %w", namespace, name, err)
+	}
+
+	return out, nil
+}
+
 // CheckTraefikGwAPIAndHelmChartConfig verifies rke2-traefik DaemonSet is ready and logs contain 'kubernetesgateway'
 // and the HelmChartConfig contains the expected preserved and patched content.
 func (config *TestConfig) CheckTraefikGwAPIAndHelmChartConfig(expectedPresent, expectedAbsent []string) error {
@@ -663,7 +673,7 @@ func (config *TestConfig) CheckTraefikGwAPIAndHelmChartConfig(expectedPresent, e
 		return fmt.Errorf("rke2-traefik logs do not contain 'kubernetesgateway'")
 	}
 
-	helmChartConfig, err := config.Server.RunKubectl("-n kube-system get helmchartconfig rke2-traefik -o yaml")
+	helmChartConfig, err := config.GetHelmChartConfigYAML("kube-system", "rke2-traefik")
 	if err != nil {
 		return fmt.Errorf("failed to get rke2-traefik HelmChartConfig: %w", err)
 	}
@@ -984,7 +994,30 @@ func (config *TestConfig) writeRegistriesConfig(registriesConfig string) error {
 	return nil
 }
 
+func (config *TestConfig) ApplyManifest(manifest string) error {
+	b64 := base64.StdEncoding.EncodeToString([]byte(manifest))
+	cmd := "echo " + b64 + " | base64 -d | KUBECONFIG=/etc/rancher/rke2/rke2.yaml PATH=$PATH:/var/lib/rancher/rke2/bin kubectl apply -f -"
+	if out, err := config.Server.RunCmdOnNode(cmd); err != nil {
+		return fmt.Errorf("failed to apply manifest: %s: %w", out, err)
+	}
+	return nil
+}
+
 func (config *TestConfig) CreateTraefikCorednsHelmChartConfig() error {
+	// Create the traefik-values-secret that the HelmChartConfig references
+	secretManifest := `---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: traefik-values-secret
+  namespace: kube-system
+type: Opaque
+data:
+  values.yaml: ""
+`
+	if err := config.ApplyManifest(secretManifest); err != nil {
+		return fmt.Errorf("failed to create traefik-values-secret: %w", err)
+	}
 
 	corednsManifest := `---
 apiVersion: helm.cattle.io/v1
@@ -1006,8 +1039,14 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: test-suite
     test.rke2-patcher.io/preserve: "true"
+  annotations:
+    test.rke2-patcher.io/owner: "qa"
 spec:
   failurePolicy: abort
+  valuesSecrets:
+  - name: traefik-values-secret
+    keys:
+    - values.yaml
   valuesContent: |-
     providers:
       kubernetesGateway:
@@ -1015,10 +1054,8 @@ spec:
 `
 	manifests := []string{corednsManifest, traefikManifest}
 	for _, manifest := range manifests {
-		b64 := base64.StdEncoding.EncodeToString([]byte(manifest))
-		cmd := "echo " + b64 + " | base64 -d | KUBECONFIG=/etc/rancher/rke2/rke2.yaml PATH=$PATH:/var/lib/rancher/rke2/bin kubectl apply -f -"
-		if out, err := config.Server.RunCmdOnNode(cmd); err != nil {
-			return fmt.Errorf("failed to apply manifest: %s: %w", out, err)
+		if err := config.ApplyManifest(manifest); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -12,7 +12,6 @@ import (
 
 const (
 	expectedTraefikTag = "v3.6.12-build20260409"
-	previousTraefikTag = "v3.6.10-build20260309"
 	expectedCoreDNSTag = "v1.14.2-build20260331"
 	previousCoreDNSTag = "v1.14.2-build20260310"
 	rolloutTimeout     = 3 * time.Minute

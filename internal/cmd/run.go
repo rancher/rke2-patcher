@@ -212,15 +212,6 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 	}
 
 	generatedContent, generatedValuesContent := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, currentImageName, targetTagName)
-	if options.DryRun {
-		printPatchPreview(components.CLIName(component.Name), runningImage, currentImageTag, targetTagName, generatedContent)
-		return nil
-	}
-
-	stateWrite, err := generateStateWrite(component.Name, currentImageTag, targetTagName, generatedValuesContent)
-	if err != nil {
-		return err
-	}
 
 	targetName, targetNamespace, err := patcher.HelmChartConfigIdentityFromContent(generatedContent)
 	if err != nil {
@@ -238,7 +229,7 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 		fmt.Printf("warning: found a HelmChartConfig object in the cluster for this component:\n")
 		fmt.Printf("- %s/%s\n", conflict.Namespace, conflict.Name)
 
-		if !options.AutoApprove {
+		if !options.DryRun && !options.AutoApprove {
 			firstConfirm, err := promptYesNoFn("Merging generated and existing HelmChartConfig values will be tried. Continue? [Yes/No]: ")
 			if err != nil {
 				return err
@@ -247,7 +238,7 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 				fmt.Println("aborted: merge was not approved")
 				return nil
 			}
-		} else {
+		} else if !options.DryRun {
 			fmt.Println("auto-approve enabled: proceeding with merge")
 		}
 
@@ -256,20 +247,29 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 			return err
 		}
 		contentToWrite = mergedContent
+	}
 
+	if options.DryRun {
 		printPatchPreview(components.CLIName(component.Name), runningImage, currentImageTag, targetTagName, contentToWrite)
-		if !options.AutoApprove {
-			secondConfirm, err := promptYesNoFn("Apply this HelmChartConfig now? [Yes/No]: ")
-			if err != nil {
-				return err
-			}
-			if !secondConfirm {
-				fmt.Println("aborted: write was not approved")
-				return nil
-			}
-		} else {
-			fmt.Println("auto-approve enabled: applying generated HelmChartConfig")
+		return nil
+	}
+
+	if conflict != nil && !options.AutoApprove {
+		secondConfirm, err := promptYesNoFn("Apply this HelmChartConfig now? [Yes/No]: ")
+		if err != nil {
+			return err
 		}
+		if !secondConfirm {
+			fmt.Println("aborted: write was not approved")
+			return nil
+		}
+	} else if conflict != nil {
+		fmt.Println("auto-approve enabled: applying generated HelmChartConfig")
+	}
+
+	stateWrite, err := generateStateWrite(component.Name, currentImageTag, targetTagName, generatedValuesContent)
+	if err != nil {
+		return err
 	}
 
 	if err := kube.ApplyHelmChartConfig(contentToWrite); err != nil {

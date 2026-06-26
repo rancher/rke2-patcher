@@ -44,6 +44,7 @@ jobs:
           - flannel_traefik_patch_components
           - image_cve_local
           - merging_values
+          - helmchartconfig_metadata_sanitization
           - reconcile_upgrade
           - airgap
           - multi_patcher_reconcile

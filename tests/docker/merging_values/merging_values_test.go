@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rancher/rke2-patcher/tests/docker"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/rancher/rke2-patcher/tests/docker"
 )
 
 const (
