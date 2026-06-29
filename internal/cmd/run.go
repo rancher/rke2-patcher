@@ -254,17 +254,22 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 		return nil
 	}
 
-	if conflict != nil && !options.AutoApprove {
-		secondConfirm, err := promptYesNoFn("Apply this HelmChartConfig now? [Yes/No]: ")
-		if err != nil {
-			return err
+	if conflict != nil {
+		// Show the merged output before applying so the user can review what will be written.
+		printPatchPreview(components.CLIName(component.Name), runningImage, currentImageTag, targetTagName, contentToWrite)
+
+		if !options.AutoApprove {
+			secondConfirm, err := promptYesNoFn("Apply this HelmChartConfig now? [Yes/No]: ")
+			if err != nil {
+				return err
+			}
+			if !secondConfirm {
+				fmt.Println("aborted: write was not approved")
+				return nil
+			}
+		} else {
+			fmt.Println("auto-approve enabled: applying HelmChartConfig")
 		}
-		if !secondConfirm {
-			fmt.Println("aborted: write was not approved")
-			return nil
-		}
-	} else if conflict != nil {
-		fmt.Println("auto-approve enabled: applying generated HelmChartConfig")
 	}
 
 	stateWrite, err := generateStateWrite(component.Name, currentImageTag, targetTagName, generatedValuesContent)
