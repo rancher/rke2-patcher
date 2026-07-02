@@ -6,3 +6,9 @@ updates:
       interval: weekly
     labels:
       - kind/dependabot
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - kind/dependabot
