@@ -313,36 +313,6 @@ func (config *TestConfig) ProvisionServer() error {
 
 	config.Server = DockerNode{Name: serverName, Port: port}
 
-	_, _ = RunCommand(fmt.Sprintf("docker rm -f %s", serverName))
-
-	dockerRun := strings.Join([]string{
-		"docker run -d",
-		"--name", serverName,
-		"--hostname", serverName,
-		"--privileged",
-		"--cgroupns=host",
-		"--memory", "4096m",
-		"-p", fmt.Sprintf("127.0.0.1:%d:6443", port),
-		"-v", "/sys/fs/bpf:/sys/fs/bpf",
-		"-v", "/lib/modules:/lib/modules",
-		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw",
-		"rancher/systemd-node:v0.0.5",
-		"/usr/lib/systemd/systemd --unit=noop.target --show-status=true",
-	}, " ")
-
-	if out, err := RunCommand(dockerRun); err != nil {
-		return fmt.Errorf("failed to start systemd node container: %s: %w", out, err)
-	}
-
-	if out, err := config.Server.RunCmdOnNode("mount --make-rshared /sys"); err != nil {
-		return fmt.Errorf("failed to set /sys mount propagation: %s: %w", out, err)
-	}
-
-	installCmd := fmt.Sprintf("curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION='%s' sh -", config.RKE2Version)
-	if out, err := config.Server.RunCmdOnNode(installCmd); err != nil {
-		return fmt.Errorf("failed to install rke2 server: %s: %w", out, err)
-	}
-
 	// Always set prime: true, and append any extra config provided by the test
 	extraConfig := strings.TrimSpace(config.ServerConfig)
 	mergedConfig := fmt.Sprintf("prime: true\ntoken: %s\n", testClusterToken)
@@ -350,18 +320,8 @@ func (config *TestConfig) ProvisionServer() error {
 		mergedConfig += "\n" + extraConfig + "\n"
 	}
 
-	if err := config.writeServerConfig(mergedConfig); err != nil {
+	if err := config.provisionRKE2ServerNode(config.Server, mergedConfig, config.RegistriesConfig); err != nil {
 		return err
-	}
-
-	if strings.TrimSpace(config.RegistriesConfig) != "" {
-		if err := config.writeRegistriesConfig(config.RegistriesConfig); err != nil {
-			return err
-		}
-	}
-
-	if out, err := config.Server.RunCmdOnNode("systemctl enable --now rke2-server"); err != nil {
-		return fmt.Errorf("failed to enable/start rke2-server: %s: %w", out, err)
 	}
 
 	if err := config.waitForKubeconfig(7 * time.Minute); err != nil {
@@ -411,54 +371,66 @@ func (config *TestConfig) ProvisionAdditionalServer() error {
 		return fmt.Errorf("failed to find free API port for additional server")
 	}
 
-	_, _ = RunCommand(fmt.Sprintf("docker rm -f %s", serverName))
-
-	dockerRun := strings.Join([]string{
-		"docker run -d",
-		"--name", serverName,
-		"--hostname", serverName,
-		"--privileged",
-		"--cgroupns=host",
-		"--memory", "4096m",
-		"-p", fmt.Sprintf("127.0.0.1:%d:6443", port),
-		"-v", "/sys/fs/bpf:/sys/fs/bpf",
-		"-v", "/lib/modules:/lib/modules",
-		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw",
-		"rancher/systemd-node:v0.0.5",
-		"/usr/lib/systemd/systemd --unit=noop.target --show-status=true",
-	}, " ")
-
-	if out, err := RunCommand(dockerRun); err != nil {
-		return fmt.Errorf("failed to start additional server container: %s: %w", out, err)
-	}
-
 	node := DockerNode{Name: serverName, Port: port}
-
-	if out, err := node.RunCmdOnNode("mount --make-rshared /sys"); err != nil {
-		return fmt.Errorf("failed to set /sys mount propagation on additional server: %s: %w", out, err)
-	}
-
-	installCmd := fmt.Sprintf("curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION='%s' sh -", config.RKE2Version)
-	if out, err := node.RunCmdOnNode(installCmd); err != nil {
-		return fmt.Errorf("failed to install rke2 on additional server: %s: %w", out, err)
-	}
 
 	joinConfig := fmt.Sprintf("prime: true\nserver: https://%s:9345\ntoken: %s\n", primaryIP, testClusterToken)
 	if extra := strings.TrimSpace(config.ServerConfig); extra != "" {
 		joinConfig += "\n" + extra + "\n"
 	}
 
-	b64Config := base64.StdEncoding.EncodeToString([]byte(joinConfig))
-	writeCmd := fmt.Sprintf("mkdir -p /etc/rancher/rke2 && echo %s | base64 -d > /etc/rancher/rke2/config.yaml", b64Config)
-	if out, err := node.RunCmdOnNode(writeCmd); err != nil {
-		return fmt.Errorf("failed to write config on additional server: %s: %w", out, err)
-	}
-
-	if out, err := node.RunCmdOnNode("systemctl enable --now rke2-server"); err != nil {
-		return fmt.Errorf("failed to start rke2-server on additional server: %s: %w", out, err)
+	if err := config.provisionRKE2ServerNode(node, joinConfig, ""); err != nil {
+		return fmt.Errorf("failed to provision additional server %s: %w", node.Name, err)
 	}
 
 	config.AdditionalServers = append(config.AdditionalServers, node)
+	return nil
+}
+
+func (config *TestConfig) provisionRKE2ServerNode(node DockerNode, serverConfig string, registriesConfig string) error {
+	_, _ = RunCommand(fmt.Sprintf("docker rm -f %s", node.Name))
+
+	dockerRun := strings.Join([]string{
+		"docker run -d",
+		"--name", node.Name,
+		"--hostname", node.Name,
+		"--privileged",
+		"--cgroupns=host",
+		"--memory", "4096m",
+		"-p", fmt.Sprintf("127.0.0.1:%d:6443", node.Port),
+		"-v", "/sys/fs/bpf:/sys/fs/bpf",
+		"-v", "/lib/modules:/lib/modules",
+		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw",
+		"rancher/systemd-node:v0.0.8",
+		"/usr/lib/systemd/systemd --unit=noop.target --show-status=true",
+	}, " ")
+
+	if out, err := RunCommand(dockerRun); err != nil {
+		return fmt.Errorf("failed to start systemd node container %s: %s: %w", node.Name, out, err)
+	}
+
+	if out, err := node.RunCmdOnNode("mount --make-rshared /sys"); err != nil {
+		return fmt.Errorf("failed to set /sys mount propagation on %s: %s: %w", node.Name, out, err)
+	}
+
+	installCmd := fmt.Sprintf("curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION='%s' sh -", config.RKE2Version)
+	if out, err := node.RunCmdOnNode(installCmd); err != nil {
+		return fmt.Errorf("failed to install rke2 on %s: %s: %w", node.Name, out, err)
+	}
+
+	if err := config.writeServerConfigOnNode(node, serverConfig); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(registriesConfig) != "" {
+		if err := config.writeRegistriesConfigOnNode(node, registriesConfig); err != nil {
+			return err
+		}
+	}
+
+	if out, err := node.RunCmdOnNode("systemctl enable --now rke2-server"); err != nil {
+		return fmt.Errorf("failed to enable/start rke2-server on %s: %s: %w", node.Name, out, err)
+	}
+
 	return nil
 }
 
@@ -977,18 +949,26 @@ func (config *TestConfig) CopyAndModifyKubeconfig() error {
 }
 
 func (config *TestConfig) writeServerConfig(serverConfig string) error {
+	return config.writeServerConfigOnNode(config.Server, serverConfig)
+}
+
+func (config *TestConfig) writeServerConfigOnNode(node DockerNode, serverConfig string) error {
 	b64Config := base64.StdEncoding.EncodeToString([]byte(serverConfig))
 	cmd := fmt.Sprintf("mkdir -p /etc/rancher/rke2 && echo %s | base64 -d > /etc/rancher/rke2/config.yaml", b64Config)
-	if out, err := config.Server.RunCmdOnNode(cmd); err != nil {
+	if out, err := node.RunCmdOnNode(cmd); err != nil {
 		return fmt.Errorf("failed to write server config: %s: %w", out, err)
 	}
 	return nil
 }
 
 func (config *TestConfig) writeRegistriesConfig(registriesConfig string) error {
+	return config.writeRegistriesConfigOnNode(config.Server, registriesConfig)
+}
+
+func (config *TestConfig) writeRegistriesConfigOnNode(node DockerNode, registriesConfig string) error {
 	b64Config := base64.StdEncoding.EncodeToString([]byte(registriesConfig))
 	cmd := fmt.Sprintf("mkdir -p /etc/rancher/rke2 && echo %s | base64 -d > /etc/rancher/rke2/registries.yaml", b64Config)
-	if out, err := config.Server.RunCmdOnNode(cmd); err != nil {
+	if out, err := node.RunCmdOnNode(cmd); err != nil {
 		return fmt.Errorf("failed to write registries config: %s: %w", out, err)
 	}
 	return nil
