@@ -40,6 +40,7 @@ jobs:
         scenario:
           - image_cve
           - image_list
+          - registry_custom_ca
           - patch_components
           - flannel_traefik_patch_components
           - image_cve_local
@@ -52,6 +53,8 @@ jobs:
         exclude:
           - exec_mode: pod
             scenario: image_cve_local
+          - exec_mode: pod
+            scenario: registry_custom_ca
           - exec_mode: pod
             scenario: airgap
     steps:

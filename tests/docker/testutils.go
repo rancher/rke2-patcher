@@ -785,6 +785,7 @@ func (config *TestConfig) runPatcherCommand(args []string) (string, error) {
 func patcherEnvAssignments() string {
 	keys := []string{
 		"RKE2_PATCHER_REGISTRY",
+		"RKE2_PATCHER_REGISTRY_CA_FILE",
 		"RKE2_PATCHER_SCANNER_MODE",
 		"RKE2_PATCHER_CVE_NAMESPACE",
 		"RKE2_PATCHER_CVE_SCANNER_IMAGE",
@@ -948,10 +949,6 @@ func (config *TestConfig) CopyAndModifyKubeconfig() error {
 	return nil
 }
 
-func (config *TestConfig) writeServerConfig(serverConfig string) error {
-	return config.writeServerConfigOnNode(config.Server, serverConfig)
-}
-
 func (config *TestConfig) writeServerConfigOnNode(node DockerNode, serverConfig string) error {
 	b64Config := base64.StdEncoding.EncodeToString([]byte(serverConfig))
 	cmd := fmt.Sprintf("mkdir -p /etc/rancher/rke2 && echo %s | base64 -d > /etc/rancher/rke2/config.yaml", b64Config)
@@ -959,10 +956,6 @@ func (config *TestConfig) writeServerConfigOnNode(node DockerNode, serverConfig 
 		return fmt.Errorf("failed to write server config: %s: %w", out, err)
 	}
 	return nil
-}
-
-func (config *TestConfig) writeRegistriesConfig(registriesConfig string) error {
-	return config.writeRegistriesConfigOnNode(config.Server, registriesConfig)
 }
 
 func (config *TestConfig) writeRegistriesConfigOnNode(node DockerNode, registriesConfig string) error {

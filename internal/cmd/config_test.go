@@ -6,6 +6,7 @@ import (
 
 func TestCollectConfigEntries_Defaults(t *testing.T) {
 	t.Setenv(registryEnvName, "")
+	t.Setenv(registryCAFileEnvName, "")
 	t.Setenv(scannerModeEnvName, "")
 	t.Setenv(cveNamespaceEnvName, "")
 	t.Setenv(cveScannerImageEnvName, "")
@@ -25,6 +26,17 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 	}
 	if registry.EnvVar != registryEnvName {
 		t.Fatalf("unexpected default registry env var: %q", registry.EnvVar)
+	}
+
+	registryCAFile := configEntryByKey(entries, "registry_ca_file")
+	if registryCAFile.Effective != "unset" {
+		t.Fatalf("unexpected default registry CA file effective value: %q", registryCAFile.Effective)
+	}
+	if registryCAFile.Source != "default" {
+		t.Fatalf("unexpected default registry CA file source: %q", registryCAFile.Source)
+	}
+	if registryCAFile.EnvVar != registryCAFileEnvName {
+		t.Fatalf("unexpected default registry CA file env var: %q", registryCAFile.EnvVar)
 	}
 
 	scannerMode := configEntryByKey(entries, "scanner_mode")
@@ -63,6 +75,7 @@ func TestCollectConfigEntries_Defaults(t *testing.T) {
 
 func TestCollectConfigEntries_Overrides(t *testing.T) {
 	t.Setenv(registryEnvName, "mirror.local:5000")
+	t.Setenv(registryCAFileEnvName, "/tmp/registry-ca.pem")
 	t.Setenv(scannerModeEnvName, "local")
 	t.Setenv(cveNamespaceEnvName, "sec-scan")
 	t.Setenv(cveScannerImageEnvName, "scanner:1.2.3")
@@ -82,6 +95,17 @@ func TestCollectConfigEntries_Overrides(t *testing.T) {
 	}
 	if registry.EnvVar != registryEnvName {
 		t.Fatalf("unexpected registry env var: %q", registry.EnvVar)
+	}
+
+	registryCAFile := configEntryByKey(entries, "registry_ca_file")
+	if registryCAFile.Effective != "/tmp/registry-ca.pem" {
+		t.Fatalf("unexpected registry CA file effective value: %q", registryCAFile.Effective)
+	}
+	if registryCAFile.Source != registryCAFileEnvName {
+		t.Fatalf("unexpected registry CA file source: %q", registryCAFile.Source)
+	}
+	if registryCAFile.EnvVar != registryCAFileEnvName {
+		t.Fatalf("unexpected registry CA file env var: %q", registryCAFile.EnvVar)
 	}
 
 	scannerMode := configEntryByKey(entries, "scanner_mode")

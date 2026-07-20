@@ -13,6 +13,7 @@ import (
 
 const (
 	registryEnvName         = "RKE2_PATCHER_REGISTRY"
+	registryCAFileEnvName   = "RKE2_PATCHER_REGISTRY_CA_FILE"
 	defaultRegistryHost     = "registry.rancher.com"
 	scannerModeEnvName      = "RKE2_PATCHER_SCANNER_MODE"
 	defaultCVEMode          = "cluster"
@@ -73,9 +74,11 @@ func collectConfigEntries() ([]configEntry, error) {
 
 	cveNamespace, cveNamespaceSource := envOr(cveNamespaceEnvName, defaultCVENamespaceName)
 	cveScannerImage, cveScannerImageSource := envOr(cveScannerImageEnvName, defaultCVEScannerImage)
+	registryCAFile, registryCAFileSource := envOr(registryCAFileEnvName, "unset")
 
 	entries := []configEntry{
 		{Key: "registry", Effective: registryValue, Default: "https://" + defaultRegistryHost, Source: registrySource, EnvVar: registryEnvName},
+		{Key: "registry_ca_file", Effective: registryCAFile, Default: "unset", Source: registryCAFileSource, EnvVar: registryCAFileEnvName},
 		{Key: "scanner_mode", Effective: scannerMode, Default: defaultCVEMode, Source: scannerModeSource, EnvVar: scannerModeEnvName},
 		{Key: "cve_namespace", Effective: cveNamespace, Default: defaultCVENamespaceName, Source: cveNamespaceSource, EnvVar: cveNamespaceEnvName},
 		{Key: "cve_scanner_image", Effective: cveScannerImage, Default: defaultCVEScannerImage, Source: cveScannerImageSource, EnvVar: cveScannerImageEnvName},

@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +16,7 @@ import (
 const (
 	defaultRegistryHost = "registry.rancher.com"
 	registryEnv         = "RKE2_PATCHER_REGISTRY"
+	registryCAFileEnv   = "RKE2_PATCHER_REGISTRY_CA_FILE"
 	defaultPage         = 100
 )
 
@@ -54,7 +57,10 @@ func ListTags(repository string, limit int) ([]Tag, error) {
 	}
 
 	next := fmt.Sprintf("%s/v2/%s/tags/list?n=%d", baseURL, escapeRepositoryPath(repositoryPath), pageSize)
-	client := &http.Client{Timeout: 20 * time.Second}
+	client, err := newRegistryHTTPClient()
+	if err != nil {
+		return nil, err
+	}
 	tags := make([]Tag, 0, limit)
 	seen := make(map[string]struct{}, limit)
 	bearerToken := ""
@@ -102,6 +108,41 @@ func ListTags(repository string, limit int) ([]Tag, error) {
 	}
 
 	return tags, nil
+}
+
+func newRegistryHTTPClient() (*http.Client, error) {
+	caFile := strings.TrimSpace(os.Getenv(registryCAFileEnv))
+	if caFile == "" {
+		return &http.Client{Timeout: 20 * time.Second}, nil
+	}
+
+	pemBytes, err := os.ReadFile(caFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s %q: %w", registryCAFileEnv, caFile, err)
+	}
+
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pemBytes) {
+		return nil, fmt.Errorf("failed to parse PEM certificates from %s %q", registryCAFileEnv, caFile)
+	}
+
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("expected http.DefaultTransport to be *http.Transport, got %T", http.DefaultTransport)
+	}
+
+	transport := defaultTransport.Clone()
+	if transport.TLSClientConfig != nil {
+		transport.TLSClientConfig = transport.TLSClientConfig.Clone()
+	} else {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.RootCAs = pool
+
+	return &http.Client{Timeout: 20 * time.Second, Transport: transport}, nil
 }
 
 func LatestTag(repository string) (Tag, error) {
