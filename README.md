@@ -224,6 +224,10 @@ General tag-registry override:
   - Behavior: tag listing starts unauthenticated, then follows Bearer challenge flow only if the registry returns `401` with `WWW-Authenticate: Bearer ...`.
   - To use Docker Hub instead: `RKE2_PATCHER_REGISTRY=registry-1.docker.io` (all Rancher component images are mirrored there publicly).
 
+- `RKE2_PATCHER_REGISTRY_CA_FILE`
+  - Optional path to a PEM file containing a CA certificate used to trust the registry TLS certificate.
+  - Useful for registries that use a private or self-signed CA and do not chain to the system trust store.
+
 The `image-patch` command supports these options and related inputs:
 
 - `--yes` / `-y`

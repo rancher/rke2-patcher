@@ -1,6 +1,16 @@
 package registry
 
-import "testing"
+import (
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestParseBearerChallenge(t *testing.T) {
 	t.Run("valid challenge", func(t *testing.T) {
@@ -133,4 +143,76 @@ func TestResolveListTagsInputs(t *testing.T) {
 		}
 		t.Fatalf("expected error, got nil")
 	})
+}
+
+func TestListTags_WithRegistryCAFile(t *testing.T) {
+	repository := "rancher/hardened-traefik"
+	server := newTLSTagsServer(t, repository, []string{"v1.0.0-build20260101"})
+	t.Setenv(registryEnv, server.URL)
+
+	_, err := ListTags(repository, 1)
+	if err == nil {
+		t.Fatalf("expected TLS validation error without CA file, got nil")
+	}
+
+	caFile := writeServerCertAsCAFile(t, server)
+	t.Setenv(registryCAFileEnv, caFile)
+
+	tags, err := ListTags(repository, 1)
+	if err != nil {
+		t.Fatalf("unexpected error with custom CA file: %v", err)
+	}
+	if len(tags) != 1 || tags[0].Name != "v1.0.0-build20260101" {
+		t.Fatalf("unexpected tags: %#v", tags)
+	}
+}
+
+func TestNewRegistryHTTPClient_InvalidCAFile(t *testing.T) {
+	invalidPath := filepath.Join(t.TempDir(), "missing.pem")
+	t.Setenv(registryCAFileEnv, invalidPath)
+
+	_, err := newRegistryHTTPClient()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), registryCAFileEnv) {
+		t.Fatalf("expected error mentioning %s, got %v", registryCAFileEnv, err)
+	}
+}
+
+func newTLSTagsServer(t *testing.T, repository string, tags []string) *httptest.Server {
+	t.Helper()
+
+	path := fmt.Sprintf("/v2/%s/tags/list", repository)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"tags":["%s"]}`, strings.Join(tags, `","`))
+	})
+
+	server := httptest.NewTLSServer(handler)
+	t.Cleanup(server.Close)
+	return server
+}
+
+func writeServerCertAsCAFile(t *testing.T, server *httptest.Server) string {
+	t.Helper()
+
+	certDER := server.TLS.Certificates[0].Certificate[0]
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("failed to parse test server certificate: %v", err)
+	}
+
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	caFile := filepath.Join(t.TempDir(), "registry-ca.pem")
+	if err := os.WriteFile(caFile, pemBytes, 0o600); err != nil {
+		t.Fatalf("failed to write CA file: %v", err)
+	}
+
+	return caFile
 }

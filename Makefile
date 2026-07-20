@@ -21,6 +21,7 @@ endif
 	test-docker-reconcile test-docker-image_cve_local test-docker-merging_values \
 	test-docker-reconcile_upgrade test-docker-airgap test-docker-multi_patcher_reconcile \
 	test-docker-helmchartconfig_metadata_sanitization
+	test-docker-registry_custom_ca
 
 help:
 	@echo "Build:"
@@ -36,6 +37,7 @@ help:
 	@echo "  make test-docker-image_cve_local EXEC_MODE=binary"
 	@echo "  make test-docker-merging_values EXEC_MODE=binary|pod"
 	@echo "  make test-docker-helmchartconfig_metadata_sanitization EXEC_MODE=binary|pod"
+	@echo "  make test-docker-registry_custom_ca EXEC_MODE=binary"
 	@echo "  make test-docker-reconcile_upgrade EXEC_MODE=binary|pod"
 	@echo "  make test-docker-multi_patcher_reconcile EXEC_MODE=binary|pod"
 	@echo "  make test-docker-patch_reconcile_component_ha EXEC_MODE=binary|pod"
@@ -74,6 +76,9 @@ test-docker-merging_values: build
 
 test-docker-helmchartconfig_metadata_sanitization: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/helmchartconfig_metadata_sanitization/helmchartconfig_metadata_sanitization_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
+
+test-docker-registry_custom_ca: build
+	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/registry_custom_ca/registry_custom_ca_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
 test-docker-reconcile_upgrade: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/reconcile_upgrade/reconcile_upgrade_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
