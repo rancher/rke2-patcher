@@ -38,6 +38,14 @@ type ResultCVEs struct {
 	CVEs []string
 }
 
+type trivyReport struct {
+	Results []struct {
+		Vulnerabilities []struct {
+			VulnerabilityID string `json:"VulnerabilityID"`
+		} `json:"Vulnerabilities"`
+	} `json:"Results"`
+}
+
 // Indirection created to allow test mocking
 var (
 	scanImagesWithTrivyJob = kube.ScanImagesWithTrivyJob
@@ -244,38 +252,20 @@ func trivyCVEs(image string) ([]string, error) {
 // trivyCVEsFromJSON parses the JSON output of trivy and extracts the list of CVE IDs
 func trivyCVEsFromJSON(output []byte) ([]string, error) {
 	trimmedOutput := bytes.TrimSpace(output)
-	var report struct {
-		Results []struct {
-			Vulnerabilities []struct {
-				VulnerabilityID string `json:"VulnerabilityID"`
-			} `json:"Vulnerabilities"`
-		} `json:"Results"`
-	}
+	var report trivyReport
 
 	if err := json.Unmarshal(trimmedOutput, &report); err != nil {
 		trimmedJSON, extractErr := firstJSONValue(trimmedOutput)
 		if extractErr == nil {
 			if secondErr := json.Unmarshal(trimmedJSON, &report); secondErr == nil {
-				return dedupeCVEs(func(appendCVE func(string)) {
-					for _, result := range report.Results {
-						for _, vulnerability := range result.Vulnerabilities {
-							appendCVE(vulnerability.VulnerabilityID)
-						}
-					}
-				}), nil
+				return cvesFromTrivyReport(report), nil
 			}
 		}
 
 		return nil, fmt.Errorf("failed to parse trivy JSON output: %w; output preview: %q", err, truncateForError(string(trimmedOutput)))
 	}
 
-	return dedupeCVEs(func(appendCVE func(string)) {
-		for _, result := range report.Results {
-			for _, vulnerability := range result.Vulnerabilities {
-				appendCVE(vulnerability.VulnerabilityID)
-			}
-		}
-	}), nil
+	return cvesFromTrivyReport(report), nil
 }
 
 // ensureLocalVEXFile checks if a local VEX file is available and not very old (24h), and if not,
@@ -425,22 +415,19 @@ func grypeCVEs(image string) ([]string, error) {
 }
 
 func firstJSONValue(output []byte) ([]byte, error) {
-	startObject := bytes.IndexByte(output, '{')
-	startArray := bytes.IndexByte(output, '[')
-	start := -1
-	switch {
-	case startObject >= 0 && startArray >= 0:
-		if startObject < startArray {
-			start = startObject
-		} else {
-			start = startArray
+	start := len(output)
+	found := false
+	for _, token := range []byte{'{', '['} {
+		index := bytes.IndexByte(output, token)
+		if index < 0 {
+			continue
 		}
-	case startObject >= 0:
-		start = startObject
-	case startArray >= 0:
-		start = startArray
+		if !found || index < start {
+			start = index
+			found = true
+		}
 	}
-	if start < 0 {
+	if !found {
 		return nil, fmt.Errorf("no JSON object or array found in scanner output")
 	}
 
@@ -451,6 +438,16 @@ func firstJSONValue(output []byte) ([]byte, error) {
 	}
 
 	return raw, nil
+}
+
+func cvesFromTrivyReport(report trivyReport) []string {
+	return dedupeCVEs(func(appendCVE func(string)) {
+		for _, result := range report.Results {
+			for _, vulnerability := range result.Vulnerabilities {
+				appendCVE(vulnerability.VulnerabilityID)
+			}
+		}
+	})
 }
 
 func scannerOutputContext(stdout []byte, stderr []byte) string {
