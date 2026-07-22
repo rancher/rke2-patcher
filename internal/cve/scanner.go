@@ -30,6 +30,7 @@ const (
 	vexFileName          = "rancher.openvex.json"
 	vexDownloadAttempts  = 5
 	vexMaxFileAge        = 24 * time.Hour
+	errorPreviewLimit    = 512
 )
 
 type ResultCVEs struct {
@@ -92,14 +93,16 @@ func listCVEsForImagesLocal(images []string) (map[string]ResultCVEs, map[string]
 // listCVEsForImageInCluster scans the given image with the cluster scanner and returns the CVEs found
 func listCVEsForImageInCluster(image string) (ResultCVEs, error) {
 	output, scanErr := kube.ScanImageWithTrivyJob(image)
-	if scanErr == nil {
-		cves, parseErr := trivyCVEsFromJSON(output)
-		if parseErr == nil {
-			return ResultCVEs{Tool: "trivy-job", CVEs: cves}, nil
-		}
-		scanErr = parseErr
+	if scanErr != nil {
+		return ResultCVEs{}, fmt.Errorf("cluster scanner failed: %s", truncateForError(scanErr.Error()))
 	}
-	return ResultCVEs{}, fmt.Errorf("cluster scanner failed: %v", scanErr)
+
+	cves, parseErr := trivyCVEsFromJSON(output)
+	if parseErr != nil {
+		return ResultCVEs{}, fmt.Errorf("cluster scanner failed: %w (%s)", parseErr, scannerOutputContext(output, nil))
+	}
+
+	return ResultCVEs{Tool: "trivy-job", CVEs: cves}, nil
 }
 
 // listCVEsForImagesInCluster scans the given images with the cluster scanner
@@ -221,17 +224,26 @@ func trivyCVEs(image string) ([]string, error) {
 	}
 
 	cmd := exec.Command("trivy", "image", "--quiet", "--format", "json", "--severity", "CRITICAL,HIGH", "--vex", vexFilePath, image)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("trivy command failed: %w (%s)", err, scannerOutputContext(stdout.Bytes(), stderr.Bytes()))
 	}
 
-	return trivyCVEsFromJSON(output)
+	cves, parseErr := trivyCVEsFromJSON(stdout.Bytes())
+	if parseErr != nil {
+		return nil, fmt.Errorf("trivy output parse failed: %w (%s)", parseErr, scannerOutputContext(stdout.Bytes(), stderr.Bytes()))
+	}
+
+	return cves, nil
 }
 
 // trivyCVEsFromJSON parses the JSON output of trivy and extracts the list of CVE IDs
 func trivyCVEsFromJSON(output []byte) ([]string, error) {
-
+	trimmedOutput := bytes.TrimSpace(output)
 	var report struct {
 		Results []struct {
 			Vulnerabilities []struct {
@@ -240,8 +252,21 @@ func trivyCVEsFromJSON(output []byte) ([]string, error) {
 		} `json:"Results"`
 	}
 
-	if err := json.Unmarshal(output, &report); err != nil {
-		return nil, err
+	if err := json.Unmarshal(trimmedOutput, &report); err != nil {
+		trimmedJSON, extractErr := firstJSONValue(trimmedOutput)
+		if extractErr == nil {
+			if secondErr := json.Unmarshal(trimmedJSON, &report); secondErr == nil {
+				return dedupeCVEs(func(appendCVE func(string)) {
+					for _, result := range report.Results {
+						for _, vulnerability := range result.Vulnerabilities {
+							appendCVE(vulnerability.VulnerabilityID)
+						}
+					}
+				}), nil
+			}
+		}
+
+		return nil, fmt.Errorf("failed to parse trivy JSON output: %w; output preview: %q", err, truncateForError(string(trimmedOutput)))
 	}
 
 	return dedupeCVEs(func(appendCVE func(string)) {
@@ -366,9 +391,13 @@ func grypeCVEs(image string) ([]string, error) {
 	}
 
 	cmd := exec.Command("grype", image, "-o", "json", "--vex", vexFilePath)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("grype command failed: %w (%s)", err, scannerOutputContext(stdout.Bytes(), stderr.Bytes()))
 	}
 
 	var report struct {
@@ -380,8 +409,8 @@ func grypeCVEs(image string) ([]string, error) {
 		} `json:"matches"`
 	}
 
-	if err := json.Unmarshal(output, &report); err != nil {
-		return nil, err
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		return nil, fmt.Errorf("failed to parse grype JSON output: %w (%s)", err, scannerOutputContext(stdout.Bytes(), stderr.Bytes()))
 	}
 
 	return dedupeCVEs(func(appendCVE func(string)) {
@@ -393,6 +422,47 @@ func grypeCVEs(image string) ([]string, error) {
 			appendCVE(match.Vulnerability.ID)
 		}
 	}), nil
+}
+
+func firstJSONValue(output []byte) ([]byte, error) {
+	startObject := bytes.IndexByte(output, '{')
+	startArray := bytes.IndexByte(output, '[')
+	start := -1
+	switch {
+	case startObject >= 0 && startArray >= 0:
+		if startObject < startArray {
+			start = startObject
+		} else {
+			start = startArray
+		}
+	case startObject >= 0:
+		start = startObject
+	case startArray >= 0:
+		start = startArray
+	}
+	if start < 0 {
+		return nil, fmt.Errorf("no JSON object or array found in scanner output")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(output[start:]))
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		return nil, err
+	}
+
+	return raw, nil
+}
+
+func scannerOutputContext(stdout []byte, stderr []byte) string {
+	return fmt.Sprintf("stdout=%q stderr=%q", truncateForError(string(bytes.TrimSpace(stdout))), truncateForError(string(bytes.TrimSpace(stderr))))
+}
+
+func truncateForError(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) <= errorPreviewLimit {
+		return trimmed
+	}
+	return fmt.Sprintf("%s...<truncated>", trimmed[:errorPreviewLimit])
 }
 
 // dedupeCVEs collects CVE IDs from the function and returns a deduplicated, sorted list of CVE IDs
