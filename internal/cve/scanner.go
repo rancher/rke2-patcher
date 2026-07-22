@@ -262,7 +262,7 @@ func trivyCVEsFromJSON(output []byte) ([]string, error) {
 			}
 		}
 
-		return nil, fmt.Errorf("failed to parse trivy JSON output: %w; output preview: %q", err, truncateForError(string(trimmedOutput)))
+		return nil, fmt.Errorf("failed to parse trivy JSON output: %w (output preview: %q)", err, truncateForError(string(trimmedOutput)))
 	}
 
 	return cvesFromTrivyReport(report), nil
@@ -415,29 +415,26 @@ func grypeCVEs(image string) ([]string, error) {
 }
 
 func firstJSONValue(output []byte) ([]byte, error) {
-	start := len(output)
-	found := false
-	for _, token := range []byte{'{', '['} {
-		index := bytes.IndexByte(output, token)
-		if index < 0 {
+	var decodeErr error
+	for index, value := range output {
+		if value != '{' && value != '[' {
 			continue
 		}
-		if !found || index < start {
-			start = index
-			found = true
+
+		decoder := json.NewDecoder(bytes.NewReader(output[index:]))
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			decodeErr = err
+			continue
 		}
-	}
-	if !found {
-		return nil, fmt.Errorf("no JSON object or array found in scanner output")
+
+		return raw, nil
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(output[start:]))
-	var raw json.RawMessage
-	if err := decoder.Decode(&raw); err != nil {
-		return nil, err
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
-
-	return raw, nil
+	return nil, fmt.Errorf("no JSON object or array found in scanner output")
 }
 
 func cvesFromTrivyReport(report trivyReport) []string {
