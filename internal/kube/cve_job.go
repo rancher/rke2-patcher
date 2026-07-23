@@ -16,6 +16,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -25,6 +26,14 @@ const (
 	defaultCVENamespace  = "rke2-patcher"
 	defaultCVEScanImage  = "aquasec/trivy:0.71.1"
 	defaultCVEJobTimeout = 8 * time.Minute
+)
+
+// Variables for supporting restricted PSA environments
+const (
+	scanRunAsUser  = int64(65532)
+	scanRunAsGroup = int64(65532)
+	scanTmpDir     = "/tmp"
+	scanCacheDir   = "/tmp/trivy-cache"
 )
 
 // scanJobStatus uses an int for Succeeded and Failed to track all possible pods created by the job
@@ -250,27 +259,40 @@ func createScanJob(clientset kubernetes.Interface, namespace string, jobName str
 	}
 
 	backoffLimit := int32(0)
+	runAsUser := scanRunAsUser
+	runAsGroup := scanRunAsGroup
+
+	labels := map[string]string{
+		"app.kubernetes.io/name": "rke2-patcher",
+		"rke2-patcher.cve":       "true",
+	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/name": "rke2-patcher",
-				"rke2-patcher.cve":       "true",
-			},
+			Labels:    labels,
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: &backoffLimit,
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app.kubernetes.io/name": "rke2-patcher",
-						"rke2-patcher.cve":       "true",
-					},
-				},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
+					RestartPolicy:                corev1.RestartPolicyNever,
+					AutomountServiceAccountToken: ptr.To(false),
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot:   ptr.To(true),
+						RunAsUser:      &runAsUser,
+						RunAsGroup:     &runAsGroup,
+						FSGroup:        &runAsGroup,
+						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name:         "tmp",
+							VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+						},
+					},
 					Containers: []corev1.Container{
 						{
 							Name:            "scanner",
@@ -278,6 +300,25 @@ func createScanJob(clientset kubernetes.Interface, namespace string, jobName str
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command:         []string{"sh"},
 							Args:            containerArgs,
+							Env: []corev1.EnvVar{
+								{Name: "HOME", Value: scanTmpDir},
+								{Name: "TMPDIR", Value: scanTmpDir},
+								{Name: "XDG_CACHE_HOME", Value: scanTmpDir},
+								{Name: "TRIVY_CACHE_DIR", Value: scanCacheDir},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "tmp", MountPath: scanTmpDir},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: ptr.To(false),
+								Privileged:               ptr.To(false),
+								ReadOnlyRootFilesystem:   ptr.To(true),
+								RunAsNonRoot:             ptr.To(true),
+								RunAsUser:                &runAsUser,
+								RunAsGroup:               &runAsGroup,
+								Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+								SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+							},
 						},
 					},
 				},
