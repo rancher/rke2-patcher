@@ -13,6 +13,8 @@ import (
 
 const (
 	registryEnvName         = "RKE2_PATCHER_REGISTRY"
+	registryUsernameEnvName = "RKE2_PATCHER_REGISTRY_USERNAME"
+	registryPasswordEnvName = "RKE2_PATCHER_REGISTRY_PASSWORD"
 	registryCAFileEnvName   = "RKE2_PATCHER_REGISTRY_CA_FILE"
 	defaultRegistryHost     = "registry.rancher.com"
 	scannerModeEnvName      = "RKE2_PATCHER_SCANNER_MODE"
@@ -31,6 +33,7 @@ type configEntry struct {
 	Default   string
 	Source    string
 	EnvVar    string
+	Sensitive bool
 }
 
 func runConfigCommand(ctx *cli.Context) error {
@@ -50,7 +53,12 @@ func runConfigCommand(ctx *cli.Context) error {
 			envVar = "n/a"
 		}
 
-		fmt.Printf("- %s: %s (default: %s, source: %s, env: %s)\n", entry.Key, entry.Effective, entry.Default, entry.Source, envVar)
+		effective := entry.Effective
+		if entry.Sensitive && entry.Source != "default" {
+			effective = "****"
+		}
+
+		fmt.Printf("- %s: %s (default: %s, source: %s, env: %s)\n", entry.Key, effective, entry.Default, entry.Source, envVar)
 	}
 
 	return nil
@@ -75,9 +83,13 @@ func collectConfigEntries() ([]configEntry, error) {
 	cveNamespace, cveNamespaceSource := envOr(cveNamespaceEnvName, defaultCVENamespaceName)
 	cveScannerImage, cveScannerImageSource := envOr(cveScannerImageEnvName, defaultCVEScannerImage)
 	registryCAFile, registryCAFileSource := envOr(registryCAFileEnvName, "unset")
+	registryUsername, registryUsernameSource := envOr(registryUsernameEnvName, "unset")
+	registryPassword, registryPasswordSource := envOr(registryPasswordEnvName, "unset")
 
 	entries := []configEntry{
 		{Key: "registry", Effective: registryValue, Default: "https://" + defaultRegistryHost, Source: registrySource, EnvVar: registryEnvName},
+		{Key: "registry_username", Effective: registryUsername, Default: "unset", Source: registryUsernameSource, EnvVar: registryUsernameEnvName},
+		{Key: "registry_password", Effective: registryPassword, Default: "unset", Source: registryPasswordSource, EnvVar: registryPasswordEnvName, Sensitive: true},
 		{Key: "registry_ca_file", Effective: registryCAFile, Default: "unset", Source: registryCAFileSource, EnvVar: registryCAFileEnvName},
 		{Key: "scanner_mode", Effective: scannerMode, Default: defaultCVEMode, Source: scannerModeSource, EnvVar: scannerModeEnvName},
 		{Key: "cve_namespace", Effective: cveNamespace, Default: defaultCVENamespaceName, Source: cveNamespaceSource, EnvVar: cveNamespaceEnvName},
