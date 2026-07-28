@@ -2,6 +2,7 @@ package registry
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"net/http"
@@ -145,6 +146,92 @@ func TestResolveListTagsInputs(t *testing.T) {
 	})
 }
 
+func TestFetchBearerToken_BasicAuth(t *testing.T) {
+	t.Run("sends basic auth when credentials are set", func(t *testing.T) {
+		t.Setenv("RKE2_PATCHER_REGISTRY_USERNAME", "someuser")
+		t.Setenv("RKE2_PATCHER_REGISTRY_PASSWORD", "sometoken")
+
+		var gotUser, gotPass string
+		var gotOK bool
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotUser, gotPass, gotOK = r.BasicAuth()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "authed-token"})
+		}))
+		defer server.Close()
+
+		token, err := fetchBearerToken(&http.Client{}, bearerChallenge{Realm: server.URL})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if token != "authed-token" {
+			t.Fatalf("unexpected token: %q", token)
+		}
+		if !gotOK {
+			t.Fatalf("expected request to include basic auth credentials")
+		}
+		if gotUser != "someuser" || gotPass != "sometoken" {
+			t.Fatalf("unexpected basic auth credentials: user=%q pass=%q", gotUser, gotPass)
+		}
+	})
+
+	t.Run("omits basic auth when credentials are unset", func(t *testing.T) {
+		t.Setenv("RKE2_PATCHER_REGISTRY_USERNAME", "")
+		t.Setenv("RKE2_PATCHER_REGISTRY_PASSWORD", "")
+
+		var gotOK bool
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _, gotOK = r.BasicAuth()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "anon-token"})
+		}))
+		defer server.Close()
+
+		if _, err := fetchBearerToken(&http.Client{}, bearerChallenge{Realm: server.URL}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotOK {
+			t.Fatalf("expected request to omit basic auth credentials")
+		}
+	})
+
+	t.Run("omits basic auth when only username is set", func(t *testing.T) {
+		t.Setenv("RKE2_PATCHER_REGISTRY_USERNAME", "someuser")
+		t.Setenv("RKE2_PATCHER_REGISTRY_PASSWORD", "")
+
+		var gotOK bool
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _, gotOK = r.BasicAuth()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "anon-token"})
+		}))
+		defer server.Close()
+
+		if _, err := fetchBearerToken(&http.Client{}, bearerChallenge{Realm: server.URL}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotOK {
+			t.Fatalf("expected request to omit basic auth credentials when password is missing")
+		}
+	})
+
+	t.Run("refuses to send credentials to non-https token endpoints", func(t *testing.T) {
+		t.Setenv("RKE2_PATCHER_REGISTRY_USERNAME", "someuser")
+		t.Setenv("RKE2_PATCHER_REGISTRY_PASSWORD", "sometoken")
+
+		_, err := fetchBearerToken(&http.Client{}, bearerChallenge{Realm: "http://example.com/token"})
+		if err == nil {
+			t.Fatalf("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "refusing to send registry credentials") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestListTags_WithRegistryCAFile(t *testing.T) {
 	repository := "rancher/hardened-traefik"
 	server := newTLSTagsServer(t, repository, []string{"v1.0.0-build20260101"})
@@ -215,4 +302,34 @@ func writeServerCertAsCAFile(t *testing.T, server *httptest.Server) string {
 	}
 
 	return caFile
+}
+
+func TestGetTagsPageWithBearer_RefusesTokenOverHTTP(t *testing.T) {
+	t.Run("refuses bearer token on non-https endpoint", func(t *testing.T) {
+		_, _, err := getTagsPageWithBearer(&http.Client{}, "http://registry.local/v2/rancher/hardened-traefik/tags/list?n=1", "http://registry.local", "some-token")
+		if err == nil {
+			t.Fatalf("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "refusing to send bearer token") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("allows bearer token on loopback", func(t *testing.T) {
+		var gotAuth string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"tags":["v1.0.0"]}`))
+		}))
+		defer server.Close()
+
+		_, _, err := getTagsPageWithBearer(&http.Client{}, server.URL+"/v2/rancher/hardened-traefik/tags/list?n=1", server.URL, "loopback-token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotAuth != "Bearer loopback-token" {
+			t.Fatalf("expected bearer token to be sent to loopback, got %q", gotAuth)
+		}
+	})
 }

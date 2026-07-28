@@ -221,6 +221,7 @@ General tag-registry override:
   - Registry endpoint used to list available tags for `image-list` and `image-patch`.
   - Default: `registry.rancher.com`
   - Accepted forms: `registry.example.local`, `registry.example.local:5000`, `https://registry.example.local`, `http://registry.example.local:5000`
+  - Private registries: For private, authenticated registries, set the `RKE2_PATCHER_REGISTRY_USERNAME` and `RKE2_PATCHER_REGISTRY_PASSWORD` environment variables. (**NOTE:** Authenticated registries must utilize HTTPS to prevent credentials from being exposed.)
   - Behavior: tag listing starts unauthenticated, then follows Bearer challenge flow only if the registry returns `401` with `WWW-Authenticate: Bearer ...`.
   - To use Docker Hub instead: `RKE2_PATCHER_REGISTRY=registry-1.docker.io` (all Rancher component images are mirrored there publicly).
 

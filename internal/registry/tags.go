@@ -17,6 +17,8 @@ const (
 	defaultRegistryHost = "registry.rancher.com"
 	registryEnv         = "RKE2_PATCHER_REGISTRY"
 	registryCAFileEnv   = "RKE2_PATCHER_REGISTRY_CA_FILE"
+	registryUsernameEnv = "RKE2_PATCHER_REGISTRY_USERNAME"
+	registryPasswordEnv = "RKE2_PATCHER_REGISTRY_PASSWORD"
 	defaultPage         = 100
 )
 
@@ -205,6 +207,10 @@ func getTagsPageWithBearer(client *http.Client, requestURL string, baseURL strin
 
 	bearerToken = strings.TrimSpace(bearerToken)
 	if bearerToken != "" {
+		host := strings.ToLower(request.URL.Hostname())
+		if request.URL.Scheme != "https" && host != "localhost" && host != "127.0.0.1" && host != "::1" {
+			return tagsPage{}, "", fmt.Errorf("refusing to send bearer token to non-https registry endpoint %q", requestURL)
+		}
 		request.Header.Set("Authorization", "Bearer "+bearerToken)
 	}
 
@@ -236,6 +242,15 @@ func getTagsPageWithBearer(client *http.Client, requestURL string, baseURL strin
 	return page, nextURL, nil
 }
 
+func registryCredentials() (string, string, bool) {
+	user := strings.TrimSpace(os.Getenv(registryUsernameEnv))
+	pass := strings.TrimSpace(os.Getenv(registryPasswordEnv))
+	if user != "" && pass != "" {
+		return user, pass, true
+	}
+	return "", "", false
+}
+
 // fetchBearerToken requests a bearer token from the registry's auth server using the information provided
 // in the WWW-Authenticate challenge
 func fetchBearerToken(client *http.Client, challenge bearerChallenge) (string, error) {
@@ -253,7 +268,21 @@ func fetchBearerToken(client *http.Client, challenge bearerChallenge) (string, e
 	}
 	authURL.RawQuery = query.Encode()
 
-	response, err := client.Get(authURL.String())
+	request, err := http.NewRequest(http.MethodGet, authURL.String(), nil)
+	if err != nil {
+		return "", err
+	}
+
+	if user, pass, ok := registryCredentials(); ok {
+		host := strings.ToLower(authURL.Hostname())
+		isSecure := authURL.Scheme == "https" || host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if !isSecure {
+			return "", fmt.Errorf("refusing to send registry credentials to non-https token endpoint %q", authURL.String())
+		}
+		request.SetBasicAuth(user, pass)
+	}
+
+	response, err := client.Do(request)
 	if err != nil {
 		return "", err
 	}
