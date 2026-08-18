@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	dario.cat/mergo v1.0.2
 	github.com/k3s-io/helm-controller v0.17.7
-	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/urfave/cli/v2 v2.27.7
 	gopkg.in/yaml.v3 v3.0.1
