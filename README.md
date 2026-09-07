@@ -25,6 +25,7 @@ rke2-patcher image-cve <component>
 rke2-patcher image-list <component> [--with-cves] [--verbose]
 rke2-patcher image-patch <component> [--dry-run] [--yes|-y]
 rke2-patcher image-reconcile <component>
+rke2-patcher node-plan --image-tag <tag> [--upgrader-image <img>] [--namespace <ns>] [--service-account <sa>] [--concurrency <n>] [--dry-run] [--yes|-y] <component>
 ```
 
 - `--version` always prints the CLI version and also tries to print the connected cluster version (`gitVersion`) from Kubernetes API `/version`.
@@ -182,7 +183,48 @@ Typical upgrade flow:
 3. Run `rke2-patcher image-reconcile <component>` for each patched component.
 4. Once stale entries are cleared, `image-patch` is allowed again.
 
+### 5) Roll out a node-level image (`rke2-runtime`, `rke2-kubernetes`)
+
+`rke2-runtime` and `rke2-kubernetes` (`rancher/hardened-kubernetes`) are **not**
+deployed via Helm, so there is no `HelmChartConfig` to patch. They are resolved
+at rke2 startup from node config (`/etc/rancher/rke2/config.yaml` keys such as
+`runtime-image` and `kube-apiserver-image`) and only change after the rke2
+service is restarted on each node.
+
+`node-plan` bridges this gap by generating
+[system-upgrade-controller](https://github.com/rancher/system-upgrade-controller)
+`Plan` objects (`upgrade.cattle.io/v1`). The Plan runs an *upgrader* image on the
+selected nodes that writes a config drop-in and restarts rke2; the desired image
+repository, tag and config keys are passed to it via environment variables.
+
+```bash
+# Preview the generated Plan(s) without applying:
+rke2-patcher node-plan --image-tag v1.31.4-rke2r1 --dry-run rke2-runtime
+
+# Apply (rolls control-plane nodes first, one at a time, with cordon/drain):
+rke2-patcher node-plan --image-tag v1.31.4-rke2r1 -y rke2-runtime
+rke2-patcher node-plan --image-tag v1.31.4 -y rke2-kubernetes
+```
+
+> Note: like the other commands, flags must be passed **before** the `<component>` argument.
+
+- `--image-tag` is required (auto tag resolution is intentionally out of scope here).
+- `rke2-runtime` emits two Plans: a **server** Plan (control-plane nodes, cordon,
+  `concurrency: 1`) and an **agent** Plan whose `prepare` step waits for the server
+  Plan to finish, so the control plane is always upgraded first.
+- `rke2-kubernetes` is server-only (the static-pod control plane lives on servers)
+  and emits a single server Plan.
+- The reference upgrader image is published from
+  [`rke2-runtime-upgrader`](https://github.com/cwayne18/rke2-runtime-upgrader);
+  override it with `--upgrader-image`.
+- Requires the system-upgrade-controller to be installed and RBAC allowing
+  `create/update` of `upgrade.cattle.io/plans` (already granted by this chart).
+- New image tags must be pullable (or pre-seeded in the airgap tarball) on every
+  node, otherwise the rke2 re-stage will fail on restart.
+
 ## Supported components
+
+### Helm-managed (patched via `HelmChartConfig`, use `image-patch`)
 
 - `rke2-traefik` -> `rancher/hardened-traefik`
 - `rke2-ingress-nginx` -> `rancher/nginx-ingress-controller`
@@ -194,6 +236,11 @@ Typical upgrade flow:
 - `rke2-canal-flannel` -> `rancher/hardened-flannel`
 - `rke2-coredns-cluster-autoscaler` -> `rancher/hardened-cluster-autoscaler`
 - `rke2-snapshot-controller` -> `rancher/hardened-snapshot-controller`
+
+### Node-level (no `HelmChartConfig`, use `node-plan`)
+
+- `rke2-runtime` -> `rancher/rke2-runtime` (config key `runtime-image`; all nodes)
+- `rke2-kubernetes` -> `rancher/hardened-kubernetes` (config keys `kube-apiserver-image`, `kube-controller-manager-image`, `kube-proxy-image`, `kube-scheduler-image`; server nodes only)
 
 ## Requirements
 
