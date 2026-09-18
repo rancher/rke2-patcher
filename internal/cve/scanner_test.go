@@ -3,6 +3,7 @@ package cve
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -98,5 +99,53 @@ func TestListForImages_ClusterModeUsesBatchScanner(t *testing.T) {
 
 	if len(errorsByImage) != 0 {
 		t.Fatalf("expected no per-image errors, got %#v", errorsByImage)
+	}
+}
+
+func TestTrivyCVEsFromJSON_PureJSON(t *testing.T) {
+	output := []byte(`{"Results":[{"Vulnerabilities":[{"VulnerabilityID":"CVE-2024-1"},{"VulnerabilityID":"CVE-2024-2"}]}]}`)
+
+	cves, err := trivyCVEsFromJSON(output)
+	if err != nil {
+		t.Fatalf("expected pure JSON output to parse, got error: %v", err)
+	}
+
+	expected := []string{"CVE-2024-1", "CVE-2024-2"}
+	if !reflect.DeepEqual(cves, expected) {
+		t.Fatalf("unexpected CVEs: got %#v want %#v", cves, expected)
+	}
+}
+
+func TestTrivyCVEsFromJSON_NoisyLeadingOutput(t *testing.T) {
+	output := []byte("warning: scanner cache is stale\n{\"Results\":[{\"Vulnerabilities\":[{\"VulnerabilityID\":\"CVE-2024-3\"}]}]}\n")
+
+	cves, err := trivyCVEsFromJSON(output)
+	if err != nil {
+		t.Fatalf("expected noisy JSON output to parse, got error: %v", err)
+	}
+
+	expected := []string{"CVE-2024-3"}
+	if !reflect.DeepEqual(cves, expected) {
+		t.Fatalf("unexpected CVEs: got %#v want %#v", cves, expected)
+	}
+}
+
+func TestTrivyCVEsFromJSON_NonJSONOutputReturnsHelpfulError(t *testing.T) {
+	output := []byte("warning: scanner unavailable")
+
+	_, err := trivyCVEsFromJSON(output)
+	if err == nil {
+		t.Fatalf("expected parse error for non-JSON output")
+	}
+
+	errText := err.Error()
+	if !strings.Contains(errText, "failed to parse trivy JSON output") {
+		t.Fatalf("expected helpful parse error, got: %q", errText)
+	}
+	if !strings.Contains(errText, "output preview") {
+		t.Fatalf("expected output preview in parse error, got: %q", errText)
+	}
+	if !strings.Contains(errText, "warning: scanner unavailable") {
+		t.Fatalf("expected non-JSON preview in parse error, got: %q", errText)
 	}
 }
