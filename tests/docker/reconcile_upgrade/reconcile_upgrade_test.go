@@ -117,6 +117,10 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 
 	Context("Patch rke2-coredns after upgrade works", func() {
 		It("patches rke2-coredns successfully after upgrade", func() {
+			Eventually(func() error {
+				return tc.CheckResourcesReady([]string{"rke2-coredns-rke2-coredns"}, nil, "10s")
+			}, "300s", "5s").Should(Succeed())
+
 			Eventually(func(g Gomega) {
 				_, err := tc.RunImagePatch("rke2-coredns", false)
 				Expect(err).NotTo(HaveOccurred())
