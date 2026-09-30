@@ -71,15 +71,22 @@ func renderCVESummary(entry cveListEntry, verbose bool) (string, string) {
 	}
 
 	count := fmt.Sprintf("%d", len(entry.CVEs))
-	if verbose {
-		return count, strings.Join(entry.CVEs, ", ")
+	visibleCVEs := entry.CVEs
+	if !verbose && len(visibleCVEs) > 2 {
+		visibleCVEs = visibleCVEs[:2]
 	}
 
-	if len(entry.CVEs) <= 2 {
-		return count, strings.Join(entry.CVEs, ", ")
+	formattedCVEs := make([]string, 0, len(visibleCVEs))
+	for _, vulnerability := range visibleCVEs {
+		formattedCVEs = append(formattedCVEs, fmt.Sprintf("%s (%s)", vulnerability.ID, vulnerability.Severity))
 	}
 
-	return count, fmt.Sprintf("%s...", strings.Join(entry.CVEs[:2], ", "))
+	vulnerabilities := strings.Join(formattedCVEs, ", ")
+	if !verbose && len(entry.CVEs) > len(visibleCVEs) {
+		vulnerabilities += "..."
+	}
+
+	return count, vulnerabilities
 }
 
 func printReconcileApplied(entry patchEntry) {

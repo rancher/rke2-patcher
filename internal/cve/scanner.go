@@ -34,7 +34,12 @@ const (
 
 type ResultCVEs struct {
 	Tool string
-	CVEs []string
+	CVEs []Vulnerability
+}
+
+type Vulnerability struct {
+	ID       string
+	Severity string
 }
 
 // Indirection created to allow test mocking
@@ -214,7 +219,7 @@ func scanImageLocally(image string) (ResultCVEs, error) {
 }
 
 // trivyCVEs scans the given image with local trivy and returns the list of CVEs found
-func trivyCVEs(image string) ([]string, error) {
+func trivyCVEs(image string) ([]Vulnerability, error) {
 	vexFilePath, err := ensureLocalVEXFile()
 	if err != nil {
 		return nil, err
@@ -229,13 +234,14 @@ func trivyCVEs(image string) ([]string, error) {
 	return trivyCVEsFromJSON(output)
 }
 
-// trivyCVEsFromJSON parses the JSON output of trivy and extracts the list of CVE IDs
-func trivyCVEsFromJSON(output []byte) ([]string, error) {
+// trivyCVEsFromJSON parses the JSON output of trivy and extracts high and critical vulnerabilities.
+func trivyCVEsFromJSON(output []byte) ([]Vulnerability, error) {
 
 	var report struct {
 		Results []struct {
 			Vulnerabilities []struct {
 				VulnerabilityID string `json:"VulnerabilityID"`
+				Severity        string `json:"Severity"`
 			} `json:"Vulnerabilities"`
 		} `json:"Results"`
 	}
@@ -244,10 +250,10 @@ func trivyCVEsFromJSON(output []byte) ([]string, error) {
 		return nil, err
 	}
 
-	return dedupeCVEs(func(appendCVE func(string)) {
+	return dedupeVulnerabilities(func(appendVulnerability func(Vulnerability)) {
 		for _, result := range report.Results {
 			for _, vulnerability := range result.Vulnerabilities {
-				appendCVE(vulnerability.VulnerabilityID)
+				appendVulnerability(Vulnerability{ID: vulnerability.VulnerabilityID, Severity: vulnerability.Severity})
 			}
 		}
 	}), nil
@@ -359,7 +365,7 @@ func resolveScanMode() (string, error) {
 	}
 }
 
-func grypeCVEs(image string) ([]string, error) {
+func grypeCVEs(image string) ([]Vulnerability, error) {
 	vexFilePath, err := ensureLocalVEXFile()
 	if err != nil {
 		return nil, err
@@ -384,33 +390,46 @@ func grypeCVEs(image string) ([]string, error) {
 		return nil, err
 	}
 
-	return dedupeCVEs(func(appendCVE func(string)) {
+	return dedupeVulnerabilities(func(appendVulnerability func(Vulnerability)) {
 		for _, match := range report.Matches {
-			severity := strings.ToUpper(strings.TrimSpace(match.Vulnerability.Severity))
-			if severity != "CRITICAL" && severity != "HIGH" {
-				continue
-			}
-			appendCVE(match.Vulnerability.ID)
+			appendVulnerability(Vulnerability{ID: match.Vulnerability.ID, Severity: match.Vulnerability.Severity})
 		}
 	}), nil
 }
 
-// dedupeCVEs collects CVE IDs from the function and returns a deduplicated, sorted list of CVE IDs
-func dedupeCVEs(visitor func(func(string))) []string {
-	set := make(map[string]struct{})
-	visitor(func(value string) {
-		id := strings.TrimSpace(value)
-		if id == "" {
+func dedupeVulnerabilities(visitor func(func(Vulnerability))) []Vulnerability {
+	set := make(map[string]Vulnerability)
+	visitor(func(vulnerability Vulnerability) {
+		vulnerability.ID = strings.TrimSpace(vulnerability.ID)
+		vulnerability.Severity = strings.ToUpper(strings.TrimSpace(vulnerability.Severity))
+		if vulnerability.ID == "" || (vulnerability.Severity != "CRITICAL" && vulnerability.Severity != "HIGH") {
 			return
 		}
-		set[id] = struct{}{}
+
+		previous, found := set[vulnerability.ID]
+		if !found || severityRank(vulnerability.Severity) > severityRank(previous.Severity) {
+			set[vulnerability.ID] = vulnerability
+		}
 	})
 
-	items := make([]string, 0, len(set))
-	for id := range set {
-		items = append(items, id)
+	items := make([]Vulnerability, 0, len(set))
+	for _, vulnerability := range set {
+		items = append(items, vulnerability)
 	}
-	sort.Strings(items)
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Severity != items[j].Severity {
+			return severityRank(items[i].Severity) > severityRank(items[j].Severity)
+		}
+		return items[i].ID < items[j].ID
+	})
 
 	return items
+}
+
+// severityRank returns an integer representing the rank of the severity level. This makes it easier to compare
+func severityRank(severity string) int {
+	if severity == "CRITICAL" {
+		return 2
+	}
+	return 1
 }

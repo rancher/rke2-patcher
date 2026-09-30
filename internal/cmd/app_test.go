@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rke2-patcher/internal/cve"
 	"github.com/rancher/rke2-patcher/internal/registry"
 	cli "github.com/urfave/cli/v2"
 )
@@ -40,6 +41,24 @@ func TestRunImageListCommandVerboseRequiresWithCVEs(t *testing.T) {
 	}
 	if exitErr.ExitCode() != 2 {
 		t.Fatalf("unexpected exit code: %d", exitErr.ExitCode())
+	}
+}
+
+func TestRenderCVESummaryIncludesSeverity(t *testing.T) {
+	entry := cveListEntry{CVEs: []cve.Vulnerability{
+		{ID: "CVE-1", Severity: "CRITICAL"},
+		{ID: "CVE-2", Severity: "HIGH"},
+		{ID: "CVE-3", Severity: "HIGH"},
+	}}
+
+	count, summary := renderCVESummary(entry, false)
+	if count != "3" || summary != "CVE-1 (CRITICAL), CVE-2 (HIGH)..." {
+		t.Fatalf("unexpected truncated summary: count=%q summary=%q", count, summary)
+	}
+
+	count, summary = renderCVESummary(entry, true)
+	if count != "3" || summary != "CVE-1 (CRITICAL), CVE-2 (HIGH), CVE-3 (HIGH)" {
+		t.Fatalf("unexpected verbose summary: count=%q summary=%q", count, summary)
 	}
 }
 

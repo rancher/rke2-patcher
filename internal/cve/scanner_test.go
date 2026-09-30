@@ -25,7 +25,7 @@ func TestListForImages_LocalModeFromEnvUsesLocalScanner(t *testing.T) {
 	listCVEsForImageLocal = func(image string) (ResultCVEs, error) {
 		switch image {
 		case "img-ok":
-			return ResultCVEs{Tool: "trivy", CVEs: []string{"CVE-1"}}, nil
+			return ResultCVEs{Tool: "trivy", CVEs: []Vulnerability{{ID: "CVE-1", Severity: "HIGH"}}}, nil
 		case "img-fail":
 			return ResultCVEs{}, errors.New("scan failed")
 		default:
@@ -43,7 +43,7 @@ func TestListForImages_LocalModeFromEnvUsesLocalScanner(t *testing.T) {
 	}
 
 	expectedResults := map[string]ResultCVEs{
-		"img-ok": {Tool: "trivy", CVEs: []string{"CVE-1"}},
+		"img-ok": {Tool: "trivy", CVEs: []Vulnerability{{ID: "CVE-1", Severity: "HIGH"}}},
 	}
 	if !reflect.DeepEqual(results, expectedResults) {
 		t.Fatalf("unexpected results: %#v", results)
@@ -77,7 +77,7 @@ func TestListForImages_ClusterModeUsesBatchScanner(t *testing.T) {
 			t.Fatalf("unexpected image batch: %#v", images)
 		}
 
-		return []byte("__RKE2_PATCHER_TRIVY_BEGIN__img-a\n{\"Results\":[{\"Vulnerabilities\":[{\"VulnerabilityID\":\"CVE-A\"}]}]}\n__RKE2_PATCHER_TRIVY_RC__img-a__0\n__RKE2_PATCHER_TRIVY_END__img-a\n"), nil
+		return []byte("__RKE2_PATCHER_TRIVY_BEGIN__img-a\n{\"Results\":[{\"Vulnerabilities\":[{\"VulnerabilityID\":\"CVE-A\",\"Severity\":\"HIGH\"}]}]}\n__RKE2_PATCHER_TRIVY_RC__img-a__0\n__RKE2_PATCHER_TRIVY_END__img-a\n"), nil
 	}
 
 	results, errorsByImage, err := ListCVEsForImages([]string{"img-a"})
@@ -90,7 +90,7 @@ func TestListForImages_ClusterModeUsesBatchScanner(t *testing.T) {
 	}
 
 	expectedResults := map[string]ResultCVEs{
-		"img-a": {Tool: "trivy-job-batch", CVEs: []string{"CVE-A"}},
+		"img-a": {Tool: "trivy-job-batch", CVEs: []Vulnerability{{ID: "CVE-A", Severity: "HIGH"}}},
 	}
 	if !reflect.DeepEqual(results, expectedResults) {
 		t.Fatalf("unexpected results: %#v", results)
@@ -98,5 +98,23 @@ func TestListForImages_ClusterModeUsesBatchScanner(t *testing.T) {
 
 	if len(errorsByImage) != 0 {
 		t.Fatalf("expected no per-image errors, got %#v", errorsByImage)
+	}
+}
+
+func TestTrivyCVEsFromJSONPreservesSeverityAndDeduplicatesToHighest(t *testing.T) {
+	output := []byte(`{"Results":[{"Vulnerabilities":[{"VulnerabilityID":"CVE-A","Severity":"HIGH"},{"VulnerabilityID":"CVE-B","Severity":"CRITICAL"},{"VulnerabilityID":"CVE-A","Severity":"CRITICAL"},{"VulnerabilityID":"CVE-C","Severity":"MEDIUM"},{"VulnerabilityID":"CVE-0","Severity":"HIGH"}]}]}`)
+
+	got, err := trivyCVEsFromJSON(output)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []Vulnerability{
+		{ID: "CVE-A", Severity: "CRITICAL"},
+		{ID: "CVE-B", Severity: "CRITICAL"},
+		{ID: "CVE-0", Severity: "HIGH"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected vulnerabilities: %#v", got)
 	}
 }

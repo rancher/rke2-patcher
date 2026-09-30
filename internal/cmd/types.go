@@ -1,5 +1,7 @@
 package cmd
 
+import "github.com/rancher/rke2-patcher/internal/cve"
+
 type imageListOptions struct {
 	WithCVEs bool
 	Verbose  bool
@@ -11,7 +13,7 @@ type imagePatchOptions struct {
 }
 
 type cveListEntry struct {
-	CVEs  []string
+	CVEs  []cve.Vulnerability
 	Error string
 }
 
