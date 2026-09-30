@@ -21,8 +21,8 @@ make build
 ```bash
 rke2-patcher --version
 rke2-patcher --config
-rke2-patcher image-cve <component>
-rke2-patcher image-list <component> [--with-cves] [--verbose]
+rke2-patcher image-cve <component> [--json]
+rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]
 rke2-patcher image-patch <component> [--dry-run] [--yes|-y]
 rke2-patcher image-reconcile <component>
 ```
@@ -89,12 +89,17 @@ rke2-patcher --config
 rke2-patcher image-cve rke2-traefik
 ```
 
+```bash
+rke2-patcher image-cve rke2-traefik --json
+```
+
 - Looks up the current running image in the cluster for the selected component.
 - Scans it for CVEs using an in-cluster Kubernetes `Job` that runs `trivy`.
 - Uses cluster mode by default (`RKE2_PATCHER_SCANNER_MODE=cluster`).
 - In cluster mode, if the target scan namespace does not exist, the tool asks whether it should create it and creates it on confirmation.
 - In local mode (`RKE2_PATCHER_SCANNER_MODE=local`), it tries local scanners in order: `trivy` first, then `grype` as fallback.
 - `grype` support is experimental.
+- Use `--json` to emit the component, scanned image, scanner name, and CVE count and findings as JSON.
 - In local mode, both `trivy` and `grype` use a shared local VEX file at `$HOME/rke2-patcher-cache/vex/rancher.openvex.json`:
   - if the file exists and is newer than 24 hours, it is reused (no download)
   - if the file exists but is older than 24 hours, a refresh is attempted (up to 3 tries); on failure, the stale local file is still used
@@ -113,6 +118,12 @@ rke2-patcher image-list rke2-traefik --with-cves
 ```bash
 rke2-patcher image-list rke2-traefik --with-cves --verbose
 ```
+
+```bash
+rke2-patcher image-list rke2-traefik --with-cves --json
+```
+
+Use `--json` with or without `--with-cves` for automation. JSON output includes component and repository identity, running images, and selected tags with status, patch eligibility, and in-use state. With `--with-cves`, each scanned tag also includes its CVE count and full vulnerability list; scan failures are returned per tag. Scanner progress and namespace prompts are written to stderr so stdout remains valid JSON.
 
 - Lists release tags from the configured registry for the selected component repository, ordered newest-first (higher build date first), with current and previous tags included.
 - Applies the same 45-day patch-window policy used by `image-patch`:

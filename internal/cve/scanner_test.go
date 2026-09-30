@@ -17,7 +17,7 @@ func TestListForImages_LocalModeFromEnvUsesLocalScanner(t *testing.T) {
 	})
 
 	clusterCalled := false
-	scanImagesWithTrivyJob = func(_ []string, _ bool) ([]byte, error) {
+	scanImagesWithTrivyJob = func(_ []string) ([]byte, error) {
 		clusterCalled = true
 		return nil, errors.New("cluster scanner should not be called in local mode")
 	}
@@ -71,7 +71,7 @@ func TestListForImages_ClusterModeUsesBatchScanner(t *testing.T) {
 		return ResultCVEs{}, errors.New("local scanner should not be called in cluster mode")
 	}
 
-	scanImagesWithTrivyJob = func(images []string, _ bool) ([]byte, error) {
+	scanImagesWithTrivyJob = func(images []string) ([]byte, error) {
 		expected := []string{"img-a"}
 		if !reflect.DeepEqual(images, expected) {
 			t.Fatalf("unexpected image batch: %#v", images)
@@ -114,7 +114,6 @@ func TestTrivyCVEsFromJSONPreservesSeverityAndDeduplicatesToHighest(t *testing.T
 		{ID: "CVE-B", Severity: "CRITICAL"},
 		{ID: "CVE-0", Severity: "HIGH"},
 	}
-	want := []Vulnerability{{ID: "CVE-A", Severity: "CRITICAL"}, {ID: "CVE-B", Severity: "CRITICAL"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected vulnerabilities: %#v", got)
 	}

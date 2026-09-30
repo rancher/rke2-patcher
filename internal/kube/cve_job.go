@@ -84,19 +84,19 @@ func ScanImageWithTrivyJob(image string) ([]byte, error) {
 	jobName := fmt.Sprintf("rke2-patcher-cve-%d", time.Now().UnixNano())
 	progressMessage := "Checking CVEs with in-cluster scanner job. Please wait..."
 
-	return runScanJob([]string{targetImage}, jobName, progressMessage, true)
+	return runScanJob([]string{targetImage}, jobName, progressMessage)
 }
 
 // ScanImagesWithTrivyJob is a batch version of ScanImageWithTrivyJob that accepts multiple images to scan in the same job and returns the combined logs of the job which contain the scan results for all images. The logs are expected to be prefixed with batchScanBeginPrefix, batchScanRCPrefix and batchScanEndPrefix to allow parsing each image's results separately if needed.
-func ScanImagesWithTrivyJob(images []string, showProgress bool) ([]byte, error) {
+func ScanImagesWithTrivyJob(images []string) ([]byte, error) {
 	jobName := fmt.Sprintf("rke2-patcher-cve-batch-%d", time.Now().UnixNano())
 	progressMessage := fmt.Sprintf("Checking CVEs with in-cluster scanner job for %d images. Please wait...", len(images))
 
-	return runScanJob(images, jobName, progressMessage, showProgress)
+	return runScanJob(images, jobName, progressMessage)
 }
 
 // runScanJob handles the logic of creating the scan job and waiting for its completion
-func runScanJob(targetImages []string, jobName string, progressMessage string, showProgress bool) ([]byte, error) {
+func runScanJob(targetImages []string, jobName string, progressMessage string) ([]byte, error) {
 	clientset, err := ClientsetProvider()
 	if err != nil {
 		return nil, err
@@ -111,9 +111,7 @@ func runScanJob(targetImages []string, jobName string, progressMessage string, s
 		return nil, err
 	}
 
-	if showProgress {
-		fmt.Println(progressMessage)
-	}
+	fmt.Fprintln(os.Stderr, progressMessage)
 
 	scannerImage := strings.TrimSpace(os.Getenv(cveScannerImageEnv))
 	if scannerImage == "" {
@@ -302,7 +300,7 @@ func ensureNamespaceForScanJob(clientset kubernetes.Interface, namespace string)
 		return nil
 	}
 
-	fmt.Printf("Namespace %q does not exist. Do you want to create it? [Yes/No]: ", namespace)
+	fmt.Fprintf(os.Stderr, "Namespace %q does not exist. Do you want to create it? [Yes/No]: ", namespace)
 	approved, err := promptYesNo()
 	if err != nil {
 		return err
@@ -315,7 +313,7 @@ func ensureNamespaceForScanJob(clientset kubernetes.Interface, namespace string)
 		return err
 	}
 
-	fmt.Printf("Namespace %q created.\n", namespace)
+	fmt.Fprintf(os.Stderr, "Namespace %q created.\n", namespace)
 	return nil
 }
 
@@ -370,7 +368,7 @@ func promptYesNo() (bool, error) {
 		case "n", "no":
 			return false, nil
 		default:
-			fmt.Print("Please answer Yes or No: ")
+			fmt.Fprint(os.Stderr, "Please answer Yes or No: ")
 		}
 	}
 }

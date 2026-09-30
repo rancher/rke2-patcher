@@ -109,7 +109,7 @@ func listCVEsForImageInCluster(image string) (ResultCVEs, error) {
 
 // listCVEsForImagesInCluster scans the given images with the cluster scanner
 func listCVEsForImagesInCluster(targetImages []string) (map[string]ResultCVEs, map[string]error, error) {
-	output, err := scanImagesWithTrivyJob(targetImages, true)
+	output, err := scanImagesWithTrivyJob(targetImages)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cluster scanner failed: %w", err)
 	}

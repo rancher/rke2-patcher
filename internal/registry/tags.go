@@ -23,8 +23,7 @@ const (
 )
 
 type Tag struct {
-	Name        string
-	LastUpdated time.Time
+	Name string
 }
 
 type tagsPage struct {

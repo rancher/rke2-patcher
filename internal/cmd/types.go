@@ -5,6 +5,7 @@ import "github.com/rancher/rke2-patcher/internal/cve"
 type imageListOptions struct {
 	WithCVEs bool
 	Verbose  bool
+	JSON     bool
 }
 
 type imagePatchOptions struct {

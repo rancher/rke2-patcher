@@ -13,8 +13,8 @@ import (
 
 var promptYesNoFn = promptYesNo
 
-// runCVE lists the CVEs for the currently running image of a component
-func runCVE(component components.Component) error {
+// runCVE lists the CVEs for the currently running image of a component (image-cve verb)
+func runCVE(component components.Component, jsonOutput bool) error {
 	runningImages, err := kube.ListRunningImages(component.Workload, component.Repository)
 	if err != nil {
 		return fmt.Errorf("running image unavailable: %w", err)
@@ -24,6 +24,9 @@ func runCVE(component components.Component) error {
 	resultCVEs, err := cve.ListCVEsForImage(image)
 	if err != nil {
 		return fmt.Errorf("failed to scan image %q: %w", image, err)
+	}
+	if jsonOutput {
+		return writeImageCVEJSON(buildImageCVEJSON(component, image, resultCVEs))
 	}
 
 	fmt.Printf("component: %s\n", components.CLIName(component.Name))
@@ -81,13 +84,18 @@ func runImageList(component components.Component, options imageListOptions) erro
 		return fmt.Errorf("failed to determine patch-window eligible tags: %w", err)
 	}
 
-	if options.WithCVEs {
-		return runImageListWithCVEs(component, currentImageName, currentTag, eligibleTags, blockedTags, previousTag, options.Verbose)
-	}
-
 	tagInfoByName := make(map[string]registry.Tag, len(tagsForSelection))
 	for _, tag := range tagsForSelection {
 		tagInfoByName[tag.Name] = tag
+	}
+
+	if options.WithCVEs {
+		return runImageListWithCVEs(component, runningImages, currentImageName, currentTag, tagsToShow, eligibleTags, blockedTags, previousTag, options)
+	}
+
+	if options.JSON {
+		output := buildImageListJSON(component, runningImages, tagsToShow, eligibleTags, currentTag, previousTag, nil, false)
+		return writeImageListJSON(output)
 	}
 
 	inUseTags := make(map[string]struct{})
@@ -117,11 +125,6 @@ func runImageList(component components.Component, options imageListOptions) erro
 			suffix = " <-- in use"
 		}
 
-		if !tag.LastUpdated.IsZero() {
-			fmt.Printf("- %s (updated %s)%s\n", tag.Name, tag.LastUpdated.Format("2006-01-02T15:04:05Z07:00"), suffix)
-			continue
-		}
-
 		fmt.Printf("- %s%s\n", tag.Name, suffix)
 	}
 
@@ -139,7 +142,7 @@ func runImageList(component components.Component, options imageListOptions) erro
 	return nil
 }
 
-func runImageListWithCVEs(component components.Component, imageName, currentTag string, tagsToScan []string, blockedTags []string, previousTag string, verbose bool) error {
+func runImageListWithCVEs(component components.Component, runningImages []kube.PodImageSummary, imageName, currentTag string, tags []string, tagsToScan []string, blockedTags []string, previousTag string, options imageListOptions) error {
 	targetImages := make([]string, 0, len(tagsToScan))
 	for _, tagName := range tagsToScan {
 		targetImages = append(targetImages, fmt.Sprintf("%s:%s", imageName, tagName))
@@ -167,7 +170,12 @@ func runImageListWithCVEs(component components.Component, imageName, currentTag 
 		cveByTag[tagName] = cveListEntry{CVEs: result.CVEs}
 	}
 
-	printImageListWithCVEs(component, tagsToScan, currentTag, previousTag, cveByTag, verbose)
+	if options.JSON {
+		output := buildImageListJSON(component, runningImages, tags, tagsToScan, currentTag, previousTag, cveByTag, true)
+		return writeImageListJSON(output)
+	}
+
+	printImageListWithCVEs(component, tagsToScan, currentTag, previousTag, cveByTag, options.Verbose)
 	printUpgradeRequiredTagsNotice(blockedTags)
 	return nil
 }

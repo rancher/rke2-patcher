@@ -1,11 +1,158 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/cve"
+	"github.com/rancher/rke2-patcher/internal/kube"
 )
+
+type imageListJSON struct {
+	Component     string             `json:"component"`
+	Repository    string             `json:"repository"`
+	RunningImages []runningImageJSON `json:"runningImages"`
+	Tags          []imageListTagJSON `json:"tags"`
+}
+
+type runningImageJSON struct {
+	Image string `json:"image"`
+	Pods  int    `json:"pods"`
+}
+
+type imageListTagJSON struct {
+	Tag           string             `json:"tag"`
+	Status        string             `json:"status"`
+	PatchEligible bool               `json:"patchEligible"`
+	InUse         bool               `json:"inUse"`
+	CVEs          *imageListCVEsJSON `json:"cves,omitempty"`
+}
+
+type imageListCVEsJSON struct {
+	Count           *int                          `json:"count,omitempty"`
+	Vulnerabilities *[]imageListVulnerabilityJSON `json:"vulnerabilities,omitempty"`
+	Error           string                        `json:"error,omitempty"`
+}
+
+type imageListVulnerabilityJSON struct {
+	ID       string `json:"id"`
+	Severity string `json:"severity"`
+}
+
+type imageCVEJSON struct {
+	Component string        `json:"component"`
+	Image     string        `json:"image"`
+	Scanner   string        `json:"scanner"`
+	CVEs      imageCVEsJSON `json:"cves"`
+}
+
+type imageCVEsJSON struct {
+	Count           int                          `json:"count"`
+	Vulnerabilities []imageListVulnerabilityJSON `json:"vulnerabilities"`
+}
+
+func buildImageListJSON(component components.Component, runningImages []kube.PodImageSummary, tags []string, eligibleTags []string, currentTag string, previousTag string, cveByTag map[string]cveListEntry, includeCVEs bool) imageListJSON {
+	output := imageListJSON{
+		Component:     components.CLIName(component.Name),
+		Repository:    component.Repository,
+		RunningImages: make([]runningImageJSON, 0, len(runningImages)),
+		Tags:          make([]imageListTagJSON, 0, len(tags)),
+	}
+
+	for _, image := range runningImages {
+		output.RunningImages = append(output.RunningImages, runningImageJSON{Image: image.Image, Pods: image.Count})
+	}
+
+	eligibleSet := make(map[string]struct{}, len(eligibleTags))
+	for _, tag := range eligibleTags {
+		eligibleSet[tag] = struct{}{}
+	}
+	inUseTags := make(map[string]struct{})
+	for _, image := range runningImages {
+		_, tag := kube.SplitImage(image.Image)
+		if tag != "" {
+			inUseTags[tag] = struct{}{}
+		}
+	}
+
+	for _, tagName := range tags {
+		tag := imageListTagJSON{Tag: tagName, Status: "newer"}
+		if tagName == currentTag {
+			tag.Status = "current"
+		} else if tagName == previousTag {
+			tag.Status = "previous"
+		}
+		_, tag.PatchEligible = eligibleSet[tagName]
+		_, tag.InUse = inUseTags[tagName]
+
+		if includeCVEs {
+			if entry, found := cveByTag[tagName]; found {
+				tag.CVEs = &imageListCVEsJSON{}
+				if strings.TrimSpace(entry.Error) != "" {
+					tag.CVEs.Error = strings.TrimSpace(entry.Error)
+				} else {
+					count := len(entry.CVEs)
+					vulnerabilities := make([]imageListVulnerabilityJSON, 0, len(entry.CVEs))
+					for _, vulnerability := range entry.CVEs {
+						vulnerabilities = append(vulnerabilities, imageListVulnerabilityJSON{
+							ID:       vulnerability.ID,
+							Severity: vulnerability.Severity,
+						})
+					}
+					tag.CVEs.Count = &count
+					tag.CVEs.Vulnerabilities = &vulnerabilities
+				}
+			}
+		}
+
+		output.Tags = append(output.Tags, tag)
+	}
+
+	return output
+}
+
+func writeImageListJSON(output imageListJSON) error {
+	return encodeJSON(os.Stdout, output)
+}
+
+func encodeImageListJSON(writer io.Writer, output imageListJSON) error {
+	return encodeJSON(writer, output)
+}
+
+func writeImageCVEJSON(output imageCVEJSON) error {
+	return encodeJSON(os.Stdout, output)
+}
+
+//encodeJSON converts Go values to JSON and writes them to the provided writer
+func encodeJSON(writer io.Writer, output any) error {
+	encoder := json.NewEncoder(writer)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(output)
+}
+
+func buildImageCVEJSON(component components.Component, image string, result cve.ResultCVEs) imageCVEJSON {
+	vulnerabilities := make([]imageListVulnerabilityJSON, 0, len(result.CVEs))
+	for _, vulnerability := range result.CVEs {
+		vulnerabilities = append(vulnerabilities, imageListVulnerabilityJSON{
+			ID:       vulnerability.ID,
+			Severity: vulnerability.Severity,
+		})
+	}
+
+	return imageCVEJSON{
+		Component: components.CLIName(component.Name),
+		Image:     image,
+		Scanner:   result.Tool,
+		CVEs: imageCVEsJSON{
+			Count:           len(vulnerabilities),
+			Vulnerabilities: vulnerabilities,
+		},
+	}
+}
 
 func printImageListWithCVEs(component components.Component, tagsToScan []string, currentTag string, previousTag string, cveByTag map[string]cveListEntry, verbose bool) {
 	fmt.Printf("COMPONENT:  %s\n", components.CLIName(component.Name))

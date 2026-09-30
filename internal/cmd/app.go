@@ -54,7 +54,10 @@ func BuildCLIApp() *cli.App {
 				Name:      "image-cve",
 				Usage:     "List CVEs for the currently running image of a component",
 				ArgsUsage: "<component>",
-				Action:    runImageCVECommand,
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "json", Usage: "Output results as JSON"},
+				},
+				Action: runImageCVECommand,
 			},
 			{
 				Name:      "image-list",
@@ -63,6 +66,7 @@ func BuildCLIApp() *cli.App {
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "with-cves", Usage: "Scan selected tags for CVEs"},
 					&cli.BoolFlag{Name: "verbose", Usage: "Show full CVE details (requires --with-cves)"},
+					&cli.BoolFlag{Name: "json", Usage: "Output results as JSON"},
 				},
 				Action: runImageListCommand,
 			},
@@ -146,7 +150,7 @@ func runImageCVECommand(ctx *cli.Context) error {
 		return err
 	}
 
-	return runCVE(component)
+	return runCVE(component, ctx.Bool("json"))
 }
 
 func runImageListCommand(ctx *cli.Context) error {
@@ -157,12 +161,12 @@ func runImageListCommand(ctx *cli.Context) error {
 	options := imageListOptions{
 		WithCVEs: ctx.Bool("with-cves"),
 		Verbose:  ctx.Bool("verbose"),
+		JSON:     ctx.Bool("json"),
 	}
 
 	if options.Verbose && !options.WithCVEs {
 		return cli.Exit("--verbose requires --with-cves", usageExitCode)
 	}
-
 	component, err := resolveComponentForCommand(ctx)
 	if err != nil {
 		return err
@@ -209,8 +213,8 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  rke2-patcher --version")
 	fmt.Println("  rke2-patcher --config")
-	fmt.Println("  rke2-patcher image-cve <component>")
-	fmt.Println("  rke2-patcher image-list <component> [--with-cves] [--verbose]")
+	fmt.Println("  rke2-patcher image-cve <component> [--json]")
+	fmt.Println("  rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]")
 	fmt.Println("  rke2-patcher image-patch <component> [--dry-run] [--yes|-y]")
 	fmt.Println("  rke2-patcher image-reconcile <component> [--yes|-y]")
 	fmt.Println()

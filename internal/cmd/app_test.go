@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,7 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rke2-patcher/internal/components"
 	"github.com/rancher/rke2-patcher/internal/cve"
+	"github.com/rancher/rke2-patcher/internal/kube"
 	"github.com/rancher/rke2-patcher/internal/registry"
 	cli "github.com/urfave/cli/v2"
 )
@@ -59,6 +63,87 @@ func TestRenderCVESummaryIncludesSeverity(t *testing.T) {
 	count, summary = renderCVESummary(entry, true)
 	if count != "3" || summary != "CVE-1 (CRITICAL), CVE-2 (HIGH), CVE-3 (HIGH)" {
 		t.Fatalf("unexpected verbose summary: count=%q summary=%q", count, summary)
+	}
+}
+
+func TestImageListJSONIncludesTagMetadataAndCVEs(t *testing.T) {
+	component := components.Component{Name: "rke2-traefik", Repository: "rancher/hardened-traefik"}
+	runningImages := []kube.PodImageSummary{{Image: "registry.rancher.com/rancher/hardened-traefik:v-current", Count: 2}}
+	tags := []string{"v-current", "v-previous", "v-blocked"}
+	eligibleTags := []string{"v-current", "v-previous"}
+	cveByTag := map[string]cveListEntry{
+		"v-current":  {CVEs: []cve.Vulnerability{{ID: "CVE-1", Severity: "CRITICAL"}}},
+		"v-previous": {CVEs: []cve.Vulnerability{}},
+	}
+
+	output := buildImageListJSON(component, runningImages, tags, eligibleTags, "v-current", "v-previous", cveByTag, true)
+	var encoded bytes.Buffer
+	if err := encodeImageListJSON(&encoded, output); err != nil {
+		t.Fatalf("failed to encode image-list JSON: %v", err)
+	}
+
+	var decoded imageListJSON
+	if err := json.Unmarshal(encoded.Bytes(), &decoded); err != nil {
+		t.Fatalf("failed to decode image-list JSON: %v", err)
+	}
+	if decoded.Component != "rke2-traefik" || decoded.Repository != "rancher/hardened-traefik" {
+		t.Fatalf("unexpected component identity: %#v", decoded)
+	}
+	if len(decoded.RunningImages) != 1 || decoded.RunningImages[0].Pods != 2 {
+		t.Fatalf("unexpected running images: %#v", decoded.RunningImages)
+	}
+	if len(decoded.Tags) != 3 {
+		t.Fatalf("expected all selected tags, got %#v", decoded.Tags)
+	}
+	if decoded.Tags[0].Status != "current" || !decoded.Tags[0].PatchEligible || !decoded.Tags[0].InUse {
+		t.Fatalf("unexpected current tag metadata: %#v", decoded.Tags[0])
+	}
+	if decoded.Tags[0].CVEs == nil || decoded.Tags[0].CVEs.Count == nil || *decoded.Tags[0].CVEs.Count != 1 || decoded.Tags[0].CVEs.Vulnerabilities == nil {
+		t.Fatalf("unexpected current tag CVEs: %#v", decoded.Tags[0].CVEs)
+	}
+	if vulnerabilities := *decoded.Tags[0].CVEs.Vulnerabilities; len(vulnerabilities) != 1 || vulnerabilities[0].ID != "CVE-1" || vulnerabilities[0].Severity != "CRITICAL" {
+		t.Fatalf("unexpected serialized vulnerability fields: %#v", vulnerabilities)
+	}
+	if decoded.Tags[1].CVEs == nil || decoded.Tags[1].CVEs.Count == nil || *decoded.Tags[1].CVEs.Count != 0 || decoded.Tags[1].CVEs.Vulnerabilities == nil {
+		t.Fatalf("expected an empty CVE result for previous tag: %#v", decoded.Tags[1].CVEs)
+	}
+	if decoded.Tags[2].PatchEligible || decoded.Tags[2].CVEs != nil {
+		t.Fatalf("blocked tag should not be marked eligible or scanned: %#v", decoded.Tags[2])
+	}
+
+	withoutCVEs := buildImageListJSON(component, runningImages, tags, eligibleTags, "v-current", "v-previous", nil, false)
+	if withoutCVEs.Tags[0].CVEs != nil {
+		t.Fatalf("unexpected CVE data when CVE scanning is disabled: %#v", withoutCVEs.Tags[0].CVEs)
+	}
+}
+
+func TestImageCVEJSONIncludesMetadataAndEmptyArray(t *testing.T) {
+	component := components.Component{Name: "rke2-traefik"}
+	result := cve.ResultCVEs{
+		Tool: "trivy-job",
+		CVEs: []cve.Vulnerability{{ID: "CVE-1", Severity: "CRITICAL"}},
+	}
+
+	output := buildImageCVEJSON(component, "rancher/hardened-traefik:v1", result)
+	var encoded bytes.Buffer
+	if err := encodeJSON(&encoded, output); err != nil {
+		t.Fatalf("failed to encode image-cve JSON: %v", err)
+	}
+
+	var decoded imageCVEJSON
+	if err := json.Unmarshal(encoded.Bytes(), &decoded); err != nil {
+		t.Fatalf("failed to decode image-cve JSON: %v", err)
+	}
+	if decoded.Component != "rke2-traefik" || decoded.Image != "rancher/hardened-traefik:v1" || decoded.Scanner != "trivy-job" {
+		t.Fatalf("unexpected image-cve metadata: %#v", decoded)
+	}
+	if decoded.CVEs.Count != 1 || len(decoded.CVEs.Vulnerabilities) != 1 || decoded.CVEs.Vulnerabilities[0].ID != "CVE-1" || decoded.CVEs.Vulnerabilities[0].Severity != "CRITICAL" {
+		t.Fatalf("unexpected image-cve findings: %#v", decoded.CVEs)
+	}
+
+	empty := buildImageCVEJSON(component, "rancher/hardened-traefik:v1", cve.ResultCVEs{Tool: "trivy-job"})
+	if empty.CVEs.Vulnerabilities == nil || len(empty.CVEs.Vulnerabilities) != 0 || empty.CVEs.Count != 0 {
+		t.Fatalf("expected empty CVE list to serialize as an empty array: %#v", empty.CVEs)
 	}
 }
 
