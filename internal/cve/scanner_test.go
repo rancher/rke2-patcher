@@ -114,6 +114,7 @@ func TestTrivyCVEsFromJSONPreservesSeverityAndDeduplicatesToHighest(t *testing.T
 		{ID: "CVE-B", Severity: "CRITICAL"},
 		{ID: "CVE-0", Severity: "HIGH"},
 	}
+	want := []Vulnerability{{ID: "CVE-A", Severity: "CRITICAL"}, {ID: "CVE-B", Severity: "CRITICAL"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected vulnerabilities: %#v", got)
 	}
