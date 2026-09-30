@@ -36,6 +36,7 @@ type TestConfig struct {
 	ProjectRoot       string
 	PatcherImage      string
 	RKE2Version       string
+	NonPrimeCluster   bool
 	ServerConfig      string
 	RegistriesConfig  string
 	Server            DockerNode
@@ -313,9 +314,12 @@ func (config *TestConfig) ProvisionServer() error {
 
 	config.Server = DockerNode{Name: serverName, Port: port}
 
-	// Always set prime: true, and append any extra config provided by the test
+	// Prime is enabled by default; selected scenarios can provision a non-Prime cluster.
 	extraConfig := strings.TrimSpace(config.ServerConfig)
-	mergedConfig := fmt.Sprintf("prime: true\ntoken: %s\n", testClusterToken)
+	mergedConfig := fmt.Sprintf("token: %s\n", testClusterToken)
+	if !config.NonPrimeCluster {
+		mergedConfig = "prime: true\n" + mergedConfig
+	}
 	if extraConfig != "" {
 		mergedConfig += "\n" + extraConfig + "\n"
 	}
@@ -373,7 +377,10 @@ func (config *TestConfig) ProvisionAdditionalServer() error {
 
 	node := DockerNode{Name: serverName, Port: port}
 
-	joinConfig := fmt.Sprintf("prime: true\nserver: https://%s:9345\ntoken: %s\n", primaryIP, testClusterToken)
+	joinConfig := fmt.Sprintf("server: https://%s:9345\ntoken: %s\n", primaryIP, testClusterToken)
+	if !config.NonPrimeCluster {
+		joinConfig = "prime: true\n" + joinConfig
+	}
 	if extra := strings.TrimSpace(config.ServerConfig); extra != "" {
 		joinConfig += "\n" + extra + "\n"
 	}

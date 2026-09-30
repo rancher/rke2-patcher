@@ -14,7 +14,11 @@ import (
 
 const usageExitCode = 2
 
-var clusterVersionResolver = kube.ClusterVersion
+var (
+	clusterVersionResolver    = kube.ClusterVersion
+	primeHelmChartLister      = kube.ListHelmChartsByIdentity
+	primeEnabledFromHelmChart = kube.ExtractPrimeEnabledFromHelmChart
+)
 
 // BuildCLIApp constructs and returns the CLI application.
 func BuildCLIApp() *cli.App {
@@ -149,6 +153,9 @@ func runImageCVECommand(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requirePrimeCluster(component); err != nil {
+		return err
+	}
 
 	return runCVE(component, ctx.Bool("json"))
 }
@@ -171,6 +178,9 @@ func runImageListCommand(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requirePrimeCluster(component); err != nil {
+		return err
+	}
 
 	return runImageList(component, options)
 }
@@ -183,6 +193,9 @@ func runImagePatchCommand(ctx *cli.Context) error {
 
 	component, err := resolveComponentForCommand(ctx)
 	if err != nil {
+		return err
+	}
+	if err := requirePrimeCluster(component); err != nil {
 		return err
 	}
 
@@ -203,9 +216,31 @@ func runReconcileCommand(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := requirePrimeCluster(component); err != nil {
+		return err
+	}
 
 	autoApprove := ctx.Bool("yes")
 	return runReconcile(component, autoApprove)
+}
+
+func requirePrimeCluster(component components.Component) error {
+	chartName := component.HelmChartConfigName
+	const chartNamespace = "kube-system"
+
+	charts, err := primeHelmChartLister(chartName, chartNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to query HelmChart for prime check: %w", err)
+	}
+
+	for _, chart := range charts {
+		enabled, err := primeEnabledFromHelmChart(chart.Content)
+		if err == nil && enabled {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("rke2-patcher can only be used in prime RKE2 clusters (prime.enabled must be true)")
 }
 
 // printUsage prints a help menu describing how the tool must be used

@@ -17,6 +17,7 @@ endif
 
 .PHONY: help build build-image push-image \
 	test-docker-image_cve test-docker-image_list test-docker-patch_components \
+		test-docker-non_prime \
 	test-docker-flannel_traefik_patch_components test-docker-patch_reconcile_component_ha \
 	test-docker-reconcile test-docker-image_cve_local test-docker-merging_values \
 	test-docker-reconcile_upgrade test-docker-airgap test-docker-multi_patcher_reconcile \
@@ -32,6 +33,7 @@ help:
 	@echo "  make test-docker-image_cve EXEC_MODE=binary|pod"
 	@echo "  make test-docker-image_list EXEC_MODE=binary|pod"
 	@echo "  make test-docker-patch_components EXEC_MODE=binary|pod"
+	@echo "  make test-docker-non_prime EXEC_MODE=binary|pod"
 	@echo "  make test-docker-flannel_traefik_patch_components EXEC_MODE=binary|pod"
 	@echo "  make test-docker-reconcile EXEC_MODE=binary|pod"
 	@echo "  make test-docker-image_cve_local EXEC_MODE=binary"
@@ -54,10 +56,13 @@ test-docker-image_cve: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/image_cve/image_cve_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
 test-docker-image_list: build
-	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/image_list/image_list_test.go -ginkgo.v -rke2Version v1.35.2+rke2r1 -patcherBin $(CURDIR)/$(BINARY)
+	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/image_list/image_list_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
 test-docker-patch_components: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/patch_components/patch_components_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
+
+test-docker-non_prime: build
+	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/non_prime/non_prime_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
 test-docker-flannel_traefik_patch_components: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/flannel_traefik_patch_components/flannel_traefik_patch_components_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)

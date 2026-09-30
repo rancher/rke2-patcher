@@ -42,6 +42,7 @@ jobs:
           - image_list
           - registry_custom_ca
           - patch_components
+          - non_prime
           - flannel_traefik_patch_components
           - image_cve_local
           - merging_values

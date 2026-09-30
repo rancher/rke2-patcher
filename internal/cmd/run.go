@@ -183,25 +183,6 @@ func runImageListWithCVEs(component components.Component, runningImages []kube.P
 // runImagePatch attempts to patch the running image of the component to a new tag by writing a HelmChartConfig manifest
 // with the new image, handling potential conflicts with existing HelmChartConfigs and respecting patch limits
 func runImagePatch(component components.Component, options imagePatchOptions) error {
-	// Check for prime flag in HelmChart
-	primeChartName := component.HelmChartConfigName
-	primeChartNS := "kube-system"
-	hcs, err := kube.ListHelmChartsByIdentity(primeChartName, primeChartNS)
-	if err != nil {
-		return fmt.Errorf("failed to query HelmChart for prime check: %w", err)
-	}
-	primeOk := false
-	for _, hc := range hcs {
-		ok, err := kube.ExtractPrimeEnabledFromHelmChart(hc.Content)
-		if err == nil && ok {
-			primeOk = true
-			break
-		}
-	}
-	if !primeOk {
-		return fmt.Errorf("rke2-patcher can only be used in prime RKE2 clusters (prime.enabled must be true)")
-	}
-
 	runningImages, err := kube.ListRunningImages(component.Workload, component.Repository)
 	if err != nil {
 		return fmt.Errorf("running image unavailable: %w", err)
