@@ -59,12 +59,19 @@ var _ = Describe("fleet-scan", Ordered, func() {
 
 	Context("Run fleet-scan", func() {
 		It("scans every supported component and writes a combined report", func() {
-			output, err := tc.RunFleetScan(fleetScanConfigMapName, true)
+			// Progress messages from the shared CVE-scan code path are written to stderr, and the
+			// Docker exec harness merges stdout/stderr, so stdout alone isn't reliably valid JSON here.
+			// Assert on the ConfigMap content instead, which is written via the Kubernetes API and is
+			// never mixed with CLI log output.
+			_, err := tc.RunFleetScan(fleetScanConfigMapName, true)
 			// Default RKE2 config doesn't run every supported component (e.g. no rke2-traefik or
 			// rke2-flannel when canal is the CNI), so individual components are expected to fail;
 			// the overall command should still succeed as long as at least one component scanned fine.
-			Expect(err).NotTo(HaveOccurred(), output)
-			Expect(json.Unmarshal([]byte(output), &report)).To(Succeed(), output)
+			Expect(err).NotTo(HaveOccurred())
+
+			out, err := tc.Server.RunKubectl("-n rke2-patcher get configmap " + fleetScanConfigMapName + " -o jsonpath='{.data.report\\.json}'")
+			Expect(err).NotTo(HaveOccurred(), out)
+			Expect(json.Unmarshal([]byte(out), &report)).To(Succeed(), out)
 			Expect(report.Components).To(HaveLen(10))
 		})
 
@@ -97,12 +104,6 @@ var _ = Describe("fleet-scan", Ordered, func() {
 				Expect(byComponent).To(HaveKey(name))
 				Expect(byComponent[name].Error).NotTo(BeEmpty(), "component %s", name)
 			}
-		})
-
-		It("writes the combined report to the requested ConfigMap", func() {
-			out, err := tc.Server.RunKubectl("-n rke2-patcher get configmap " + fleetScanConfigMapName + " -o jsonpath='{.data.report\\.json}'")
-			Expect(err).NotTo(HaveOccurred(), out)
-			Expect(out).To(ContainSubstring(`"components"`))
 		})
 	})
 })
