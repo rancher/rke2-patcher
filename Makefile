@@ -21,7 +21,7 @@ endif
 	test-docker-reconcile test-docker-image_cve_local test-docker-merging_values \
 	test-docker-reconcile_upgrade test-docker-airgap test-docker-multi_patcher_reconcile \
 	test-docker-helmchartconfig_metadata_sanitization
-	test-docker-registry_custom_ca
+	test-docker-registry_custom_ca test-docker-fleet_scan
 
 help:
 	@echo "Build:"
@@ -41,6 +41,7 @@ help:
 	@echo "  make test-docker-reconcile_upgrade EXEC_MODE=binary|pod"
 	@echo "  make test-docker-multi_patcher_reconcile EXEC_MODE=binary|pod"
 	@echo "  make test-docker-patch_reconcile_component_ha EXEC_MODE=binary|pod"
+	@echo "  make test-docker-fleet_scan EXEC_MODE=binary|pod"
 	@echo "  make test-docker-airgap EXEC_MODE=binary IMAGE_BUNDLES_DIR=/path/to/bundles"
 	@echo ""
 	@echo "Defaults:"
@@ -88,6 +89,9 @@ test-docker-airgap: build
 
 test-docker-multi_patcher_reconcile: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/multi_patcher_reconcile/multi_patcher_reconcile_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
+
+test-docker-fleet_scan: build
+	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/fleet_scan/fleet_scan_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
 build-image:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .

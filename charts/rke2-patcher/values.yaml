@@ -8,3 +8,10 @@ resources: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+scan:
+  # Deploys a CronJob that runs "rke2-patcher fleet-scan" on a schedule, so a fleet-wide
+  # CVE/patch-window report is kept up to date without a human exec-ing into the pod.
+  enabled: true
+  schedule: "0 */4 * * *"
+  configMapName: rke2-patcher-report
