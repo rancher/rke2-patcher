@@ -82,7 +82,10 @@ var _ = Describe("fleet-scan", Ordered, func() {
 			}
 
 			for _, name := range []string{
+				// rke2-canal-calico and rke2-canal-flannel are both containers of the
+				// same rke2-canal daemonset, which is present by default.
 				"rke2-canal-calico",
+				"rke2-canal-flannel",
 				"rke2-coredns",
 				"rke2-coredns-cluster-autoscaler",
 				"rke2-ingress-nginx",
@@ -100,7 +103,7 @@ var _ = Describe("fleet-scan", Ordered, func() {
 				byComponent[componentReport.Component] = componentReport
 			}
 
-			for _, name := range []string{"rke2-traefik", "rke2-flannel", "rke2-canal-flannel", "rke2-dns-node-cache"} {
+			for _, name := range []string{"rke2-traefik", "rke2-flannel", "rke2-dns-node-cache"} {
 				Expect(byComponent).To(HaveKey(name))
 				Expect(byComponent[name].Error).NotTo(BeEmpty(), "component %s", name)
 			}
