@@ -1,12 +1,27 @@
 version: 2
 updates:
+  # Grouped into a single PR and ignores patch updates to avoid noise
   - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      action-deps:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-patch"
+    labels:
+      - kind/dependabot
+  - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
     labels:
       - kind/dependabot
-  - package-ecosystem: gomod
+  - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly

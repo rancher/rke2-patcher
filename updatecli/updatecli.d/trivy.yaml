@@ -1,0 +1,83 @@
+---
+name: "Update Trivy version"
+
+sources:
+  trivy:
+    name: "Latest Trivy minor release"
+    kind: githubrelease
+    spec:
+      owner: aquasecurity
+      repository: trivy
+      token: '{{ requiredEnv .github.token }}'
+      typefilter:
+        release: true
+        draft: false
+        prerelease: false
+      versionfilter:
+        kind: semver
+        pattern: minor
+    transformers:
+      - trimprefix: "v"
+
+targets:
+  scannerImage:
+    name: "Update the in-cluster Trivy image"
+    kind: file
+    scmid: default
+    sourceid: trivy
+    spec:
+      file: internal/kube/cve_job.go
+      matchpattern: 'aquasec/trivy:\d+\.\d+\.\d+'
+      replacepattern: 'aquasec/trivy:{{ source "trivy" }}'
+
+  configDefault:
+    name: "Update the displayed Trivy image default"
+    kind: file
+    scmid: default
+    sourceid: trivy
+    spec:
+      file: internal/cmd/config.go
+      matchpattern: 'aquasec/trivy:\d+\.\d+\.\d+'
+      replacepattern: 'aquasec/trivy:{{ source "trivy" }}'
+
+  dockerTestInstaller:
+    name: "Update the Docker-test Trivy installer version"
+    kind: file
+    scmid: default
+    sourceid: trivy
+    spec:
+      file: tests/docker/testutils.go
+      matchpattern: '(?m)(const TrivyVersion = ")[^"]+(")'
+      replacepattern: '$1{{ source "trivy" }}$2'
+
+  readmeDefault:
+    name: "Update the documented Trivy image default"
+    kind: file
+    scmid: default
+    sourceid: trivy
+    spec:
+      file: README.md
+      matchpattern: 'aquasec/trivy:\d+\.\d+\.\d+'
+      replacepattern: 'aquasec/trivy:{{ source "trivy" }}'
+
+scms:
+  default:
+    kind: github
+    spec:
+      token: '{{ requiredEnv .github.token }}'
+      username: '{{ requiredEnv .github.username }}'
+      user: '{{ .github.user }}'
+      email: '{{ .github.email }}'
+      owner: '{{ .github.owner }}'
+      repository: '{{ .github.repository }}'
+      branch: '{{ .github.branch }}'
+
+actions:
+  default:
+    title: 'Update Trivy version to {{ source "trivy" }}'
+    kind: github/pullrequest
+    scmid: default
+    spec:
+      automerge: false
+      labels:
+        - kind/dependabot
