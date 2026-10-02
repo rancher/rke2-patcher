@@ -1,0 +1,27 @@
+{{- if .Values.scan.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rke2-patcher-scan
+  namespace: rke2-patcher
+spec:
+  schedule: {{ .Values.scan.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: rke2-patcher
+        spec:
+          serviceAccountName: rke2-patcher
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: "true"
+          restartPolicy: OnFailure
+          containers:
+            - name: rke2-patcher
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              resources: {{- toYaml .Values.resources | nindent 16 }}
+              command: ["rke2-patcher"]
+              args: ["fleet-scan", "--write-configmap={{ .Values.scan.configMapName }}"]
+{{- end }}

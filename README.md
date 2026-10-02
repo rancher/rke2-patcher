@@ -25,6 +25,7 @@ rke2-patcher image-cve <component> [--json]
 rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]
 rke2-patcher image-patch <component> [--dry-run] [--yes|-y]
 rke2-patcher image-reconcile <component>
+rke2-patcher fleet-scan [--write-configmap=<name>] [--json]
 ```
 
 - `--version` always prints the CLI version and also tries to print the connected cluster version (`gitVersion`) from Kubernetes API `/version`.
@@ -48,6 +49,7 @@ make test-docker-reconcile              # Test reconciliation
 make test-docker-merging-values         # Test value merging
 make test-docker-reconcile-upgrade      # Test upgrade reconciliation
 make test-docker-airgap                 # Test airgap deployment
+make test-docker-fleet_scan             # Test fleet-scan combined report
 ```
 
 All docker tests support:
@@ -69,6 +71,7 @@ The repository includes Docker end-to-end scenario tests, modeled after the RKE2
   - `tests/docker/flannel_traefik/flannel_traefik_test.go`
   - `tests/docker/patch_components/patch_components_test.go`
   - `tests/docker/reconcile/reconcile_test.go`
+  - `tests/docker/fleet_scan/fleet_scan_test.go`
 - Shared test harness: `tests/docker/testutils.go`
 - CI workflow: `.github/workflows/docker-tests.yaml`
 
@@ -193,6 +196,24 @@ Typical upgrade flow:
 3. Run `rke2-patcher image-reconcile <component>` for each patched component.
 4. Once stale entries are cleared, `image-patch` is allowed again.
 
+### 5) Fleet-wide combined report
+
+```bash
+rke2-patcher fleet-scan
+```
+
+```bash
+rke2-patcher fleet-scan --write-configmap=rke2-patcher-report --json
+```
+
+- Loops over every supported component and runs the same scan used by `image-list --with-cves --json` for each one: current/previous/newer tags, 45-day patch-window eligibility, and per-eligible-tag CVE counts with IDs and severity.
+- Aggregates all per-component results into a single combined report and prints it to stdout (tabular by default, or `--json` for a machine-readable version).
+- Writes that same combined report to a Kubernetes `ConfigMap` so it can be consumed unattended (for example by Fleet/Continuous Delivery status checks), using the same in-cluster service-account-first, kubeconfig-fallback credential resolution as the other commands.
+- `--write-configmap=<name>` sets the ConfigMap name; defaults to `rke2-patcher-report` in the `RKE2_PATCHER_CVE_NAMESPACE` namespace.
+- A scan failure for one component (for example a workload that is not present in the cluster) is recorded against that component in the report instead of aborting the run; the remaining components are still scanned.
+- The command exits non-zero only when every component failed to scan; a partial failure still exits `0` so scheduled runs are not marked as failed just because one component is missing.
+- Intended to be run unattended from the `rke2-patcher-scan` `CronJob` installed by the Helm chart (see `charts/rke2-patcher/values.yaml`'s `scan.*` values), but can also be run manually.
+
 ## Supported components
 
 - `rke2-traefik` -> `rancher/hardened-traefik`
@@ -272,6 +293,13 @@ Patch-limit state storage (not configurable):
 - Name: `rke2-patcher-state`
 - Data key: `patch-limit-state.json`
 - Namespace: `RKE2_PATCHER_CVE_NAMESPACE` (default `rke2-patcher`)
+
+Fleet-scan combined report storage:
+
+- Backend: Kubernetes `ConfigMap`
+- Name: `rke2-patcher-report` by default, configurable via `fleet-scan --write-configmap=<name>`
+- Data key: `report.json`
+- Namespace: `RKE2_PATCHER_CVE_NAMESPACE` (default `rke2-patcher`), same namespace used by `rke2-patcher-state`
 
 - `RKE2_PATCHER_CVE_SCANNER_IMAGE`
   - Scanner image used by cluster mode.

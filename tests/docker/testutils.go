@@ -758,6 +758,21 @@ func (config *TestConfig) RunImageReconcile(component string, dryRun bool) (stri
 	return out, nil
 }
 
+func (config *TestConfig) RunFleetScan(configMapName string, jsonOutput bool) (string, error) {
+	args := []string{"fleet-scan"}
+	if configMapName != "" {
+		args = append(args, "--write-configmap="+configMapName)
+	}
+	if jsonOutput {
+		args = append(args, "--json")
+	}
+	out, err := config.runPatcherCommand(args)
+	if err != nil {
+		return out, fmt.Errorf("fleet-scan failed: %w", err)
+	}
+	return out, nil
+}
+
 func (config *TestConfig) runPatcherCommand(args []string) (string, error) {
 	joinedArgs := strings.Join(args, " ")
 	envAssignments := patcherEnvAssignments()

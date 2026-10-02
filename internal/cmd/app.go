@@ -89,6 +89,15 @@ func BuildCLIApp() *cli.App {
 				},
 				Action: runReconcileCommand,
 			},
+			{
+				Name:  "fleet-scan",
+				Usage: "Scan every supported component and write one combined CVE/patch-window report",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "write-configmap", Usage: "Name of the ConfigMap to write the combined report to", Value: defaultFleetScanConfigMapName},
+					&cli.BoolFlag{Name: "json", Usage: "Print the combined report as JSON"},
+				},
+				Action: runFleetScanCommand,
+			},
 		},
 	}
 
@@ -208,6 +217,20 @@ func runReconcileCommand(ctx *cli.Context) error {
 	return runReconcile(component, autoApprove)
 }
 
+// runFleetScanCommand handles the "fleet-scan" CLI command
+func runFleetScanCommand(ctx *cli.Context) error {
+	if ctx.Args().Len() > 0 {
+		return cli.Exit(fmt.Sprintf("unexpected extra argument(s): %s", strings.Join(ctx.Args().Slice(), " ")), usageExitCode)
+	}
+
+	options := fleetScanOptions{
+		ConfigMapName: ctx.String("write-configmap"),
+		JSON:          ctx.Bool("json"),
+	}
+
+	return runFleetScan(options)
+}
+
 // printUsage prints a help menu describing how the tool must be used
 func printUsage() {
 	fmt.Println("Usage:")
@@ -217,6 +240,7 @@ func printUsage() {
 	fmt.Println("  rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]")
 	fmt.Println("  rke2-patcher image-patch <component> [--dry-run] [--yes|-y]")
 	fmt.Println("  rke2-patcher image-reconcile <component> [--yes|-y]")
+	fmt.Println("  rke2-patcher fleet-scan [--write-configmap=<name>] [--json]")
 	fmt.Println()
 	fmt.Printf("Supported components: %s\n", strings.Join(components.Supported(), ", "))
 	fmt.Println()
