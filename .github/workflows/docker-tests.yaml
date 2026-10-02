@@ -43,6 +43,7 @@ jobs:
           - registry_custom_ca
           - patch_components
           - non_prime
+          - patch_components_with_tag
           - flannel_traefik_patch_components
           - image_cve_local
           - merging_values

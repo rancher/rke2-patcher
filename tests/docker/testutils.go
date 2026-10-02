@@ -739,12 +739,15 @@ func (config *TestConfig) RunImageList(component string, withCVEs bool) (string,
 	return out, nil
 }
 
-func (config *TestConfig) RunImagePatch(component string, dryRun bool) (string, error) {
+func (config *TestConfig) RunImagePatch(component string, dryRun bool, tag string) (string, error) {
 	args := []string{"image-patch"}
 	if dryRun {
 		args = append(args, "--dry-run")
 	}
 	args = append(args, "--yes")
+	if tag != "" {
+		args = append(args, "--tag", tag)
+	}
 	args = append(args, component)
 	out, err := config.runPatcherCommand(args)
 	if err != nil {

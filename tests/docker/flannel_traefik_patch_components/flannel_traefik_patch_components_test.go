@@ -56,10 +56,10 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	// ── Batch 1: rke2-flannel + rke2-traefik ──────────
 	Context("Batch 1: rke2-flannel + rke2-traefik", func() {
 		It("patches rke2-flannel and rke2-traefik", func() {
-			output, err := tc.RunImagePatch("rke2-flannel", false)
+			output, err := tc.RunImagePatch("rke2-flannel", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 
-			output, err = tc.RunImagePatch("rke2-traefik", false)
+			output, err = tc.RunImagePatch("rke2-traefik", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 

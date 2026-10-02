@@ -87,7 +87,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	// ── Patch rke2-traefik ──────────
 	Context("Patch: rke2-traefik", func() {
 		It("patches rke2-traefik", func() {
-			output, err := tc.RunImagePatch("rke2-traefik", false)
+			output, err := tc.RunImagePatch("rke2-traefik", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 

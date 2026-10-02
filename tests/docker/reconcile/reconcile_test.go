@@ -55,10 +55,10 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 
 	Context("Patch both rke2-coredns and rke2-traefik", func() {
 		It("patches rke2-coredns and rke2-traefik", func() {
-			output, err := tc.RunImagePatch("rke2-coredns", false)
+			output, err := tc.RunImagePatch("rke2-coredns", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 
-			output, err = tc.RunImagePatch("rke2-traefik", false)
+			output, err = tc.RunImagePatch("rke2-traefik", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 
@@ -109,7 +109,6 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 			}, "60s", "5s").Should(Succeed())
 		})
 	})
-
 })
 
 var failed bool
