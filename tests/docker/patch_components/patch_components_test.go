@@ -59,7 +59,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	// ── Batch 1: rke2-canal-flannel + rke2-canal-calico ───────────────────
 	Context("Batch 1: rke2-canal-flannel + rke2-canal-calico", func() {
 		It("patches rke2-canal-flannel and rke2-canal-calico", func() {
-			output, err := tc.RunImagePatch("rke2-canal-flannel", false)
+			output, err := tc.RunImagePatch("rke2-canal-flannel", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 
@@ -76,7 +76,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 		})
 
 		It("patches rke2-canal-calico and merges with existing flannel patch", func() {
-			output, err := tc.RunImagePatch("rke2-canal-calico", false)
+			output, err := tc.RunImagePatch("rke2-canal-calico", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 			Expect(output).To(ContainSubstring("applied HelmChartConfig"))
 		})
@@ -97,7 +97,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	// ── Batch 2: rke2-coredns + rke2-coredns-cluster-autoscaler ──────────
 	Context("Batch 2: rke2-coredns + rke2-coredns-cluster-autoscaler", func() {
 		It("patches rke2-coredns", func() {
-			output, err := tc.RunImagePatch("rke2-coredns", false)
+			output, err := tc.RunImagePatch("rke2-coredns", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 
@@ -114,7 +114,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 		})
 
 		It("patches rke2-coredns", func() {
-			output, err := tc.RunImagePatch("rke2-coredns-cluster-autoscaler", false)
+			output, err := tc.RunImagePatch("rke2-coredns-cluster-autoscaler", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 			Expect(output).To(ContainSubstring("applied HelmChartConfig"))
 
@@ -136,10 +136,10 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	// ── Batch 3: rke2-metrics-server + rke2-snapshot-controller ──────────
 	Context("Batch 3: rke2-metrics-server + rke2-snapshot-controller", func() {
 		It("patches rke2-metrics-server and rke2-snapshot-controller", func() {
-			output, err := tc.RunImagePatch("rke2-metrics-server", false)
+			output, err := tc.RunImagePatch("rke2-metrics-server", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 
-			output, err = tc.RunImagePatch("rke2-snapshot-controller", false)
+			output, err = tc.RunImagePatch("rke2-snapshot-controller", false, "")
 			Expect(output).To(ContainSubstring("refusing to patch: moving to a newer minor release is not supported"))
 		})
 
@@ -159,7 +159,7 @@ var _ = Describe("Default components image-patch", Ordered, func() {
 	// ── Batch 4: rke2-ingress-nginx ───────────────────────────────────────
 	Context("Batch 4: rke2-ingress-nginx", func() {
 		It("patches rke2-ingress-nginx", func() {
-			output, err := tc.RunImagePatch("rke2-ingress-nginx", false)
+			output, err := tc.RunImagePatch("rke2-ingress-nginx", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 

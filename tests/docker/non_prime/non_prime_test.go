@@ -60,7 +60,7 @@ var _ = Describe("component commands require a Prime cluster", Ordered, func() {
 	})
 
 	It("rejects image-patch", func() {
-		output, err := tc.RunImagePatch(componentName, false)
+		output, err := tc.RunImagePatch(componentName, false, "")
 		Expect(err).To(HaveOccurred())
 		Expect(output).To(ContainSubstring(primeError))
 	})

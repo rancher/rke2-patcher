@@ -279,6 +279,10 @@ func selectTagsForCVEListing(tags []registry.Tag, currentTag string) ([]string, 
 
 // resolvePatchTargetTag finds the target tag to patch to after going through the different limitations checks (mainly, new minor)
 func resolvePatchTargetTag(repository string, currentTag string) (string, error) {
+	return resolvePatchTargetTagForTarget(repository, currentTag, "")
+}
+
+func resolvePatchTargetTagForTarget(repository string, currentTag string, requestedTarget string) (string, error) {
 	tags, err := registry.ListTags(repository, 200)
 	if err != nil {
 		return "", fmt.Errorf("failed to list tags: %w", err)
@@ -299,9 +303,28 @@ func resolvePatchTargetTag(repository string, currentTag string) (string, error)
 		return "", fmt.Errorf("refusing to patch: current tag %q not found in latest observed tags", currentTag)
 	}
 
-	targetIndex := currentIndex - 1
-	if targetIndex < 0 {
-		return "", fmt.Errorf("refusing to patch: current tag %q is already the latest", currentTag)
+	targetIndex := -1
+	if requestedTarget == "" {
+		targetIndex = currentIndex - 1
+		if targetIndex < 0 {
+			return "", fmt.Errorf("refusing to patch: current tag %q is already the latest", currentTag)
+		}
+	} else {
+		for index, tagName := range orderedTags {
+			if tagName == requestedTarget {
+				targetIndex = index
+				break
+			}
+		}
+		if targetIndex < 0 {
+			return "", fmt.Errorf("refusing to patch: requested target tag %q was not found in latest observed tags", requestedTarget)
+		}
+		if targetIndex == currentIndex {
+			return "", fmt.Errorf("refusing to patch: requested target tag %q is already running", requestedTarget)
+		}
+		if targetIndex > currentIndex {
+			return "", fmt.Errorf("refusing to patch: requested target tag %q is older than current tag %q", requestedTarget, currentTag)
+		}
 	}
 
 	targetTag := orderedTags[targetIndex]

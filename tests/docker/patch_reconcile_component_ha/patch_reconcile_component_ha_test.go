@@ -92,10 +92,10 @@ var _ = Describe("Default components image-patch on 3-CP cluster", Ordered, func
 	// ── Batch 1: rke2-flannel + rke2-traefik ──────────────────────────────
 	Context("Batch 1: rke2-flannel + rke2-traefik", func() {
 		It("patches rke2-flannel and rke2-traefik", func() {
-			output, err := tc.RunImagePatch("rke2-flannel", false)
+			output, err := tc.RunImagePatch("rke2-flannel", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 
-			output, err = tc.RunImagePatch("rke2-traefik", false)
+			output, err = tc.RunImagePatch("rke2-traefik", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 
@@ -135,7 +135,7 @@ var _ = Describe("Default components image-patch on 3-CP cluster", Ordered, func
 	// ── Batch 2: rke2-coredns-cluster-autoscaler ──────────────────────────
 	Context("Batch 2: rke2-coredns-cluster-autoscaler", func() {
 		It("patches rke2-coredns-cluster-autoscaler", func() {
-			output, err := tc.RunImagePatch("rke2-coredns-cluster-autoscaler", false)
+			output, err := tc.RunImagePatch("rke2-coredns-cluster-autoscaler", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 			Expect(output).To(ContainSubstring("applied HelmChartConfig"))
 		})
@@ -157,7 +157,7 @@ var _ = Describe("Default components image-patch on 3-CP cluster", Ordered, func
 	// ── Batch 3: rke2-metrics-server ──────────────────────────────────────
 	Context("Batch 3: rke2-metrics-server", func() {
 		It("patches rke2-metrics-server", func() {
-			output, err := tc.RunImagePatch("rke2-metrics-server", false)
+			output, err := tc.RunImagePatch("rke2-metrics-server", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 

@@ -71,7 +71,7 @@ var _ = Describe("HelmChartConfig merge sanitization", Ordered, func() {
 
 	Context("Dry-run image-patch output is sanitized", func() {
 		It("validates dry-run output without applying changes", func() {
-			output, err := tc.RunImagePatch("rke2-traefik", true)
+			output, err := tc.RunImagePatch("rke2-traefik", true, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 
 			Expect(output).To(ContainSubstring("would apply HelmChartConfig"), output)
@@ -99,7 +99,7 @@ var _ = Describe("HelmChartConfig merge sanitization", Ordered, func() {
 	// ── Create a HelmChartConfig for rke2-traefik and rke2-coredns ───────
 	Context("Patch rke2-traefik", func() {
 		It("Run image-patch on rke2-traefik", func() {
-			_, err := tc.RunImagePatch("rke2-traefik", false)
+			_, err := tc.RunImagePatch("rke2-traefik", false, "")
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {

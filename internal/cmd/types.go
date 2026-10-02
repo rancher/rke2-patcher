@@ -11,6 +11,7 @@ type imageListOptions struct {
 type imagePatchOptions struct {
 	DryRun      bool
 	AutoApprove bool
+	TargetTag   string
 }
 
 type cveListEntry struct {

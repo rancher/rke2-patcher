@@ -52,10 +52,10 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 
 	Context("Patch both rke2-ingress-nginx and rke2-canal-flannel", func() {
 		It("patches rke2-ingress-nginx and rke2-canal-flannel", func() {
-			output, err := tc.RunImagePatch("rke2-ingress-nginx", false)
+			output, err := tc.RunImagePatch("rke2-ingress-nginx", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 
-			output, err = tc.RunImagePatch("rke2-canal-flannel", false)
+			output, err = tc.RunImagePatch("rke2-canal-flannel", false, "")
 			Expect(err).NotTo(HaveOccurred(), output)
 		})
 
@@ -92,13 +92,13 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 	Context("Patch after upgrade should fail", func() {
 		It("fails to patch rke2-coredns and rke2-ingress-nginx", func() {
 			Eventually(func(g Gomega) {
-				output, err := tc.RunImagePatch("rke2-coredns", false)
+				output, err := tc.RunImagePatch("rke2-coredns", false, "")
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
 			}, "60s", "5s").Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				output, err := tc.RunImagePatch("rke2-ingress-nginx", false)
+				output, err := tc.RunImagePatch("rke2-ingress-nginx", false, "")
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("refusing to patch: active patch for component"))
 			}, "150s", "5s").Should(Succeed())
@@ -118,7 +118,7 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 	Context("Patch rke2-coredns after upgrade works", func() {
 		It("patches rke2-coredns successfully after upgrade", func() {
 			Eventually(func(g Gomega) {
-				_, err := tc.RunImagePatch("rke2-coredns", false)
+				_, err := tc.RunImagePatch("rke2-coredns", false, "")
 				Expect(err).NotTo(HaveOccurred())
 			}, "120s", "10s").Should(Succeed())
 		})

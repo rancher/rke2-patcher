@@ -23,7 +23,7 @@ rke2-patcher --version
 rke2-patcher --config
 rke2-patcher image-cve <component> [--json]
 rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]
-rke2-patcher image-patch <component> [--dry-run] [--yes|-y]
+rke2-patcher image-patch <component> [--tag TAG] [--dry-run] [--yes|-y]
 rke2-patcher image-reconcile <component>
 ```
 
@@ -151,11 +151,18 @@ rke2-patcher image-patch rke2-traefik --dry-run
 ```
 
 ```bash
+rke2-patcher image-patch rke2-traefik --tag TAG_FROM_IMAGE_LIST --dry-run
+```
+
+Replace `TAG_FROM_IMAGE_LIST` with the exact eligible tag to select.
+
+```bash
 rke2-patcher image-patch rke2-traefik --yes
 ```
 
 - Detects the current running image repository in-cluster.
-- Picks the next newer tag from `registry.rancher.com` and applies a `HelmChartConfig` object with that tag via the Kubernetes API.
+- By default, picks the next newer tag from `registry.rancher.com`. With `--tag`, selects that exact registry tag instead. Explicit tags must be newer than the running tag and remain on the same minor release line.
+- Applies a `HelmChartConfig` object with the selected tag via the Kubernetes API.
 - Enforces a 45-day patch window relative to the cluster "zero-day" date, derived from the running kube-apiserver image tag (`rancher/hardened-kubernetes`) build date.
 - If a candidate target tag is outside that 45-day window, patching is refused and the user is instructed to upgrade RKE2 first.
 - `rke2-ingress-nginx` is exempt from this date-window check.

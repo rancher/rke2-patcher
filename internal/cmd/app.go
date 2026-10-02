@@ -81,6 +81,7 @@ func BuildCLIApp() *cli.App {
 				Flags: []cli.Flag{
 					&cli.BoolFlag{Name: "dry-run", Usage: "Print generated HelmChartConfig without writing"},
 					&cli.BoolFlag{Name: "yes", Aliases: []string{"y"}, Usage: "Automatically approve merge/apply prompts"},
+					&cli.StringFlag{Name: "tag", Usage: "Patch to this specific available tag instead of the next tag"},
 				},
 				Action: runImagePatchCommand,
 			},
@@ -202,6 +203,7 @@ func runImagePatchCommand(ctx *cli.Context) error {
 	options := imagePatchOptions{
 		DryRun:      ctx.Bool("dry-run"),
 		AutoApprove: ctx.Bool("yes"),
+		TargetTag:   strings.TrimSpace(ctx.String("tag")),
 	}
 
 	return runImagePatch(component, options)
@@ -250,7 +252,7 @@ func printUsage() {
 	fmt.Println("  rke2-patcher --config")
 	fmt.Println("  rke2-patcher image-cve <component> [--json]")
 	fmt.Println("  rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]")
-	fmt.Println("  rke2-patcher image-patch <component> [--dry-run] [--yes|-y]")
+	fmt.Println("  rke2-patcher image-patch <component> [--tag TAG] [--dry-run] [--yes|-y]")
 	fmt.Println("  rke2-patcher image-reconcile <component> [--yes|-y]")
 	fmt.Println()
 	fmt.Printf("Supported components: %s\n", strings.Join(components.Supported(), ", "))

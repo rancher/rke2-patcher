@@ -408,6 +408,54 @@ func TestResolvePatchTargetTag_AllowsSameMinorUpgrade(t *testing.T) {
 	}
 }
 
+func TestResolvePatchTargetTagForTargetSelectsRequestedTag(t *testing.T) {
+	repository := "rancher/hardened-traefik"
+	server := newTagsServer(t, repository, []string{
+		"v1.14.1-build20260206",
+		"v1.14.2-build20260207",
+		"v1.14.3-build20260208",
+	})
+	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
+
+	targetTag, err := resolvePatchTargetTagForTarget(repository, "v1.14.1-build20260206", "v1.14.3-build20260208")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if targetTag != "v1.14.3-build20260208" {
+		t.Fatalf("unexpected target tag: %q", targetTag)
+	}
+}
+
+func TestResolvePatchTargetTagForTargetRejectsUnsafeTargets(t *testing.T) {
+	repository := "rancher/hardened-traefik"
+	server := newTagsServer(t, repository, []string{
+		"v1.13.9-build20260205",
+		"v1.14.1-build20260206",
+		"v1.14.2-build20260207",
+		"v1.15.0-build20260208",
+	})
+	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
+
+	testCases := []struct {
+		name       string
+		target     string
+		errorMatch string
+	}{
+		{name: "unavailable", target: "v1.14.4-build20260209", errorMatch: "not found in latest observed tags"},
+		{name: "older", target: "v1.13.9-build20260205", errorMatch: "is older than current tag"},
+		{name: "newer minor", target: "v1.15.0-build20260208", errorMatch: "moving to a newer minor release is not supported"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := resolvePatchTargetTagForTarget(repository, "v1.14.1-build20260206", testCase.target)
+			if err == nil || !strings.Contains(err.Error(), testCase.errorMatch) {
+				t.Fatalf("expected error containing %q, got %v", testCase.errorMatch, err)
+			}
+		})
+	}
+}
+
 func newTagsServer(t *testing.T, repository string, tags []string) *httptest.Server {
 	t.Helper()
 
