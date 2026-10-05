@@ -1,6 +1,6 @@
 image:
   repository: rancher/rke2-patcher
-  tag: 1.2.2
+  tag: 1.2.4
   pullPolicy: IfNotPresent
 
 resources: {}
