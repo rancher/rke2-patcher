@@ -7,4 +7,5 @@ RUN CGO_ENABLED=0 go build -ldflags "-X github.com/rancher/rke2-patcher/internal
 
 FROM registry.suse.com/bci/bci-busybox:16.0
 COPY --from=builder /rke2-patcher /usr/local/bin/rke2-patcher
-ENTRYPOINT ["sleep", "infinity"]
+ENTRYPOINT ["rke2-patcher"]
+CMD ["controller"]

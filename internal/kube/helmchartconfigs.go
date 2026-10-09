@@ -21,6 +21,9 @@ type HelmChartConfigObject struct {
 	Name      string
 	Namespace string
 	Content   string
+	// ResourceVersion is the version the content was read at. Pass it back to
+	// ApplyHelmChartConfig so concurrent writers cannot silently overwrite each other.
+	ResourceVersion string
 }
 
 // kubeDynamicClient returns a dynamic.Interface using in-cluster config if available, otherwise falls back to kubeconfig.
@@ -136,16 +139,21 @@ func getHelmChartConfigByIdentityImpl(name string, namespace string) (*HelmChart
 	}
 
 	return &HelmChartConfigObject{
-		Name:      item.GetName(),
-		Namespace: item.GetNamespace(),
-		Content:   string(contentBytes),
+		Name:            item.GetName(),
+		Namespace:       item.GetNamespace(),
+		Content:         string(contentBytes),
+		ResourceVersion: item.GetResourceVersion(),
 	}, nil
 }
 
 // ApplyHelmChartConfig is a variable for testability, delegates to applyHelmChartConfigImpl.
 var ApplyHelmChartConfig = applyHelmChartConfigImpl
 
-func applyHelmChartConfigImpl(yamlContent string) error {
+// applyHelmChartConfigImpl writes a HelmChartConfig using optimistic concurrency.
+// An empty resourceVersion means the object is expected not to exist yet and is created;
+// otherwise it is updated only if it still has that resourceVersion. Lost races surface as
+// Conflict/AlreadyExists errors (check with k8serrors.IsConflict / IsAlreadyExists).
+func applyHelmChartConfigImpl(yamlContent string, resourceVersion string) error {
 	un := &unstructured.Unstructured{}
 	if err := syaml.Unmarshal([]byte(yamlContent), &un.Object); err != nil {
 		return fmt.Errorf("failed to unmarshal HelmChartConfig YAML: %w", err)
@@ -163,21 +171,19 @@ func applyHelmChartConfigImpl(yamlContent string) error {
 	}
 
 	resource := dynamicClient.Resource(gvr).Namespace(namespace)
-	name := un.GetName()
 
-	// Try to get the existing object
-	existing, err := resource.Get(context.Background(), name, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			// Create if not found
-			_, err = resource.Create(context.Background(), un, metav1.CreateOptions{})
-			return err
+	if strings.TrimSpace(resourceVersion) == "" {
+		_, err = resource.Create(context.Background(), un, metav1.CreateOptions{})
+		if k8serrors.IsAlreadyExists(err) {
+			return fmt.Errorf("HelmChartConfig %s/%s was created concurrently; re-run to merge with it: %w", namespace, un.GetName(), err)
 		}
 		return err
 	}
 
-	// Update if found
-	un.SetResourceVersion(existing.GetResourceVersion())
+	un.SetResourceVersion(resourceVersion)
 	_, err = resource.Update(context.Background(), un, metav1.UpdateOptions{})
+	if k8serrors.IsConflict(err) {
+		return fmt.Errorf("HelmChartConfig %s/%s was modified concurrently; re-run to merge with the latest version: %w", namespace, un.GetName(), err)
+	}
 	return err
 }

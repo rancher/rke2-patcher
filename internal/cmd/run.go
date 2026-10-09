@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rke2-patcher/internal/kube"
 	"github.com/rancher/rke2-patcher/internal/patcher"
 	"github.com/rancher/rke2-patcher/internal/registry"
+	patchstate "github.com/rancher/rke2-patcher/internal/state"
 )
 
 var promptYesNoFn = promptYesNo
@@ -183,6 +184,10 @@ func runImageListWithCVEs(component components.Component, runningImages []kube.P
 // runImagePatch attempts to patch the running image of the component to a new tag by writing a HelmChartConfig manifest
 // with the new image, handling potential conflicts with existing HelmChartConfigs and respecting patch limits
 func runImagePatch(component components.Component, options imagePatchOptions) error {
+	if err := refuseInControllerMode(); err != nil {
+		return err
+	}
+
 	runningImages, err := kube.ListRunningImages(component.Workload, component.Repository)
 	if err != nil {
 		return fmt.Errorf("running image unavailable: %w", err)
@@ -266,7 +271,11 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 		return err
 	}
 
-	if err := kube.ApplyHelmChartConfig(contentToWrite); err != nil {
+	expectedResourceVersion := ""
+	if conflict != nil {
+		expectedResourceVersion = conflict.ResourceVersion
+	}
+	if err := kube.ApplyHelmChartConfig(contentToWrite, expectedResourceVersion); err != nil {
 		return fmt.Errorf("failed to apply HelmChartConfig to cluster: %w", err)
 	}
 
@@ -278,6 +287,8 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 	return nil
 }
 
+// runReconcile works in both modes: it only reverts patches the CLI made, which the controller
+// never manages, and reverting them is how a cluster is moved to the controller mode
 func runReconcile(component components.Component, autoApprove bool) error {
 	currentVersion, err := clusterVersionResolver()
 	if err != nil {
@@ -365,40 +376,7 @@ func runReconcile(component components.Component, autoApprove bool) error {
 	return removeEntriesFromState(namespace, keysToRemove)
 }
 
-// reconcileEntry removes the patcher values from the HelmChartConfig file specified in the entry
+// reconcileEntry removes the patcher values from the HelmChartConfig specified in the entry
 func reconcileEntry(entry patchEntry) (bool, error) {
-	generatedValuesContent := strings.TrimSpace(entry.GeneratedValuesContent)
-	if generatedValuesContent == "" {
-		return false, nil
-	}
-
-	// Map known component names to actual HelmChartConfig resource names
-	resourceName := entry.Component
-	switch entry.Component {
-	case "rke2-canal-flannel":
-		resourceName = "rke2-canal"
-	}
-	conflict, err := kube.GetHelmChartConfigByIdentity(resourceName, "kube-system")
-	if err != nil {
-		return false, fmt.Errorf("failed to get HelmChartConfig for reconciliation: %w", err)
-	}
-	if conflict == nil {
-		return false, nil // nothing to reconcile
-	}
-
-	existingContent := strings.TrimSpace(conflict.Content)
-	if existingContent == "" {
-		return false, nil
-	}
-
-	updatedContent, err := patcher.SubtractPatcherValuesContent(existingContent, generatedValuesContent)
-	if err != nil {
-		return false, fmt.Errorf("failed to strip patcher values: %w", err)
-	}
-
-	if err := kube.ApplyHelmChartConfig(updatedContent); err != nil {
-		return false, fmt.Errorf("failed to apply reconciled HelmChartConfig: %w", err)
-	}
-
-	return true, nil
+	return patchstate.RevertEntry(entry)
 }

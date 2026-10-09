@@ -15,7 +15,7 @@ ifneq ($(filter v%,$(TAG)),)
 VERSION := $(patsubst v%,%,$(TAG))
 endif
 
-.PHONY: help build build-image push-image \
+.PHONY: help build build-image push-image generate test test-envtest \
 	test-docker-image_cve test-docker-image_list test-docker-patch_components \
 		test-docker-non_prime \
 	test-docker-flannel_traefik_patch_components test-docker-patch_reconcile_component_ha \
@@ -23,28 +23,34 @@ endif
 	test-docker-reconcile_upgrade test-docker-airgap test-docker-multi_patcher_reconcile \
 	test-docker-helmchartconfig_metadata_sanitization \
 	test-docker-registry_custom_ca \
-	test-docker-patch_components_with_tag
+	test-docker-patch_components_with_tag test-docker-controller_patch
 
 help:
 	@echo "Build:"
 	@echo "  make build"
 	@echo "  make build-image"
+	@echo "  make generate        # regenerate deepcopy code and the ImagePatch CRD"
+	@echo ""
+	@echo "Unit / integration tests:"
+	@echo "  make test"
+	@echo "  make test-envtest    # controller against a real kube-apiserver (envtest)"
 	@echo ""
 	@echo "Docker scenario tests:"
-	@echo "  make test-docker-image_cve EXEC_MODE=binary|pod"
-	@echo "  make test-docker-image_list EXEC_MODE=binary|pod"
-	@echo "  make test-docker-patch_components EXEC_MODE=binary|pod"
-	@echo "  make test-docker-non_prime EXEC_MODE=binary|pod"
-	@echo "  make test-docker-patch_components_with_tag EXEC_MODE=binary|pod"
-	@echo "  make test-docker-flannel_traefik_patch_components EXEC_MODE=binary|pod"
-	@echo "  make test-docker-reconcile EXEC_MODE=binary|pod"
+	@echo "  make test-docker-image_cve EXEC_MODE=binary|controller"
+	@echo "  make test-docker-image_list EXEC_MODE=binary|controller"
+	@echo "  make test-docker-patch_components EXEC_MODE=binary|controller"
+	@echo "  make test-docker-non_prime EXEC_MODE=binary|controller"
+	@echo "  make test-docker-patch_components_with_tag EXEC_MODE=binary|controller"
+	@echo "  make test-docker-controller_patch EXEC_MODE=binary|controller"
+	@echo "  make test-docker-flannel_traefik_patch_components EXEC_MODE=binary|controller"
+	@echo "  make test-docker-reconcile EXEC_MODE=binary|controller"
 	@echo "  make test-docker-image_cve_local EXEC_MODE=binary"
-	@echo "  make test-docker-merging_values EXEC_MODE=binary|pod"
-	@echo "  make test-docker-helmchartconfig_metadata_sanitization EXEC_MODE=binary|pod"
+	@echo "  make test-docker-merging_values EXEC_MODE=binary|controller"
+	@echo "  make test-docker-helmchartconfig_metadata_sanitization EXEC_MODE=binary|controller"
 	@echo "  make test-docker-registry_custom_ca EXEC_MODE=binary"
-	@echo "  make test-docker-reconcile_upgrade EXEC_MODE=binary|pod"
-	@echo "  make test-docker-multi_patcher_reconcile EXEC_MODE=binary|pod"
-	@echo "  make test-docker-patch_reconcile_component_ha EXEC_MODE=binary|pod"
+	@echo "  make test-docker-reconcile_upgrade EXEC_MODE=binary|controller"
+	@echo "  make test-docker-multi_patcher_reconcile EXEC_MODE=binary|controller"
+	@echo "  make test-docker-patch_reconcile_component_ha EXEC_MODE=binary|controller"
 	@echo "  make test-docker-airgap EXEC_MODE=binary IMAGE_BUNDLES_DIR=/path/to/bundles"
 	@echo ""
 	@echo "Defaults:"
@@ -53,6 +59,19 @@ help:
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+
+CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
+SETUP_ENVTEST ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+generate:
+	$(CONTROLLER_GEN) object paths=./api/...
+	$(CONTROLLER_GEN) crd paths=./api/... output:crd:dir=charts/rke2-patcher/crds
+
+test:
+	go test ./internal/... ./api/...
+
+test-envtest:
+	KUBEBUILDER_ASSETS="$$($(SETUP_ENVTEST) use -p path)" go test -race -run TestEnvtest -v ./internal/controller/
 
 test-docker-image_cve: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/image_cve/image_cve_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
@@ -68,6 +87,9 @@ test-docker-non_prime: build
 
 test-docker-patch_components_with_tag: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/patch_components_with_tag/patch_components_with_tag_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
+
+test-docker-controller_patch: build
+	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/controller_patch/controller_patch_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
 
 test-docker-flannel_traefik_patch_components: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/flannel_traefik_patch_components/flannel_traefik_patch_components_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)

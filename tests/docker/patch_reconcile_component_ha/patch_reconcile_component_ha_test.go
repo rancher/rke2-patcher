@@ -42,6 +42,8 @@ var _ = Describe("Default components image-patch on 3-CP cluster", Ordered, func
 			var err error
 			tc, err = docker.NewTestConfig(*rke2Version, *patcherBin)
 			Expect(err).NotTo(HaveOccurred())
+			// In controller mode, run two controller replicas so leader election is exercised
+			tc.ControllerReplicas = 2
 
 			tc.ServerConfig = "cni: flannel\ningress-controller: traefik\n"
 

@@ -1,6 +1,9 @@
 package cmd
 
-import "github.com/rancher/rke2-patcher/internal/cve"
+import (
+	"github.com/rancher/rke2-patcher/internal/cve"
+	"github.com/rancher/rke2-patcher/internal/state"
+)
 
 type imageListOptions struct {
 	WithCVEs bool
@@ -19,17 +22,9 @@ type cveListEntry struct {
 	Error string
 }
 
-type patchState struct {
-	Entries map[string]patchEntry `json:"entries"`
-}
+type patchState = state.State
 
-type patchEntry struct {
-	Component              string `json:"component"`
-	ClusterVersion         string `json:"clusterVersion"`
-	BaselineTag            string `json:"baselineTag"`
-	PatchedToTag           string `json:"patchedToTag"`
-	GeneratedValuesContent string `json:"generatedValuesContent,omitempty"`
-}
+type patchEntry = state.Entry
 
 type patchStateWrite struct {
 	StateNamespace string

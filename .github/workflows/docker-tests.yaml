@@ -36,7 +36,7 @@ jobs:
       matrix:
         exec_mode:
           - binary
-          - pod
+          - controller
         scenario:
           - image_cve
           - image_list
@@ -52,12 +52,13 @@ jobs:
           - airgap
           - multi_patcher_reconcile
           - patch_reconcile_component_ha
+          - controller_patch
         exclude:
-          - exec_mode: pod
+          - exec_mode: controller
             scenario: image_cve_local
-          - exec_mode: pod
+          - exec_mode: controller
             scenario: registry_custom_ca
-          - exec_mode: pod
+          - exec_mode: controller
             scenario: airgap
     steps:
       - name: Checkout

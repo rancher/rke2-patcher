@@ -3,6 +3,21 @@ image:
   tag: 1.2.4
   pullPolicy: IfNotPresent
 
+# Run the ImagePatch controller (declarative patching). The CLI is still available in the
+# pod through `kubectl exec`. When disabled the pod only provides the CLI.
+controller:
+  enabled: true
+  # More than one replica requires leaderElect
+  replicas: 1
+  leaderElect: true
+
+# Extra environment variables for the container, e.g. the registry settings
+# (RKE2_PATCHER_REGISTRY, RKE2_PATCHER_REGISTRY_USERNAME, ...). Standard EnvVar entries,
+# so secrets can be referenced with valueFrom.
+env: []
+# - name: RKE2_PATCHER_REGISTRY
+#   value: registry.example.com
+
 resources: {}
 
 nodeSelector: {}

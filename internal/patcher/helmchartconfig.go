@@ -8,7 +8,6 @@ import (
 	"dario.cat/mergo"
 	helmcontrollerv1 "github.com/k3s-io/helm-controller/pkg/apis/helm.cattle.io/v1"
 	"gopkg.in/yaml.v3"
-	"k8s.io/apimachinery/pkg/runtime"
 	syaml "sigs.k8s.io/yaml"
 )
 
@@ -32,6 +31,12 @@ func BuildHelmChartConfig(componentName string, defaultChartConfigName string, i
 	content := renderHelmChartConfig(defaultChartConfigName, defaultNamespace, valuesContent)
 
 	return content, valuesContent
+}
+
+// HelmChartConfigForValues renders a HelmChartConfig manifest around already generated
+// valuesContent (as returned by BuildHelmChartConfig)
+func HelmChartConfigForValues(chartName string, valuesContent string) string {
+	return renderHelmChartConfig(chartName, defaultNamespace, valuesContent)
 }
 
 func MergeHelmChartConfigWithContent(generatedContent string, existingContent string) (string, error) {
@@ -161,10 +166,31 @@ func mergeHelmChartConfigSpec(existing helmcontrollerv1.HelmChartConfigSpec, gen
 	return merged, nil
 }
 
+// deepCopyValue copies YAML-decoded values. runtime.DeepCopyJSON cannot be used because it
+// panics on the plain int values yaml.v3 produces (e.g. "replicas: 2").
+func deepCopyValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		copied := make(map[string]any, len(typed))
+		for key, item := range typed {
+			copied[key] = deepCopyValue(item)
+		}
+		return copied
+	case []any:
+		copied := make([]any, len(typed))
+		for index, item := range typed {
+			copied[index] = deepCopyValue(item)
+		}
+		return copied
+	default:
+		return typed
+	}
+}
+
 func mergeMapsWithOverride(base map[string]any, overlay map[string]any) (map[string]any, error) {
-	result := runtime.DeepCopyJSON(base)
-	if result == nil {
-		result = map[string]any{}
+	result := map[string]any{}
+	if base != nil {
+		result = deepCopyValue(base).(map[string]any)
 	}
 
 	if overlay != nil {
@@ -176,17 +202,21 @@ func mergeMapsWithOverride(base map[string]any, overlay map[string]any) (map[str
 	return result, nil
 }
 
-// ensureProperIndentation adds 4-space indentation to each line that doesn't already have it.
-// This preserves any existing indentation (for nested keys) and comments while ensuring the
-// top-level content is indented for block scalar display.
+// ensureProperIndentation indents the whole block by 4 spaces for block scalar display,
+// unless it already is. Every line is shifted by the same amount so nesting is preserved:
+// deciding per line would leave keys nested exactly 4 spaces deep (e.g. autoscaler.image.tag)
+// behind and corrupt the structure. Comments are preserved.
 func ensureProperIndentation(content string) string {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
+	trimmed := strings.Trim(content, "\n")
+	if strings.TrimSpace(trimmed) == "" {
 		return ""
+	}
+	if isProperlyIndented(trimmed) {
+		return trimmed
 	}
 	lines := strings.Split(trimmed, "\n")
 	for i, line := range lines {
-		if len(line) > 0 && !strings.HasPrefix(line, "    ") {
+		if strings.TrimSpace(line) != "" {
 			lines[i] = "    " + line
 		}
 	}
@@ -306,7 +336,7 @@ func mergeValuesContent(existing string, incoming string) (string, error) {
 		return "", fmt.Errorf("failed to parse generated valuesContent: %w", err)
 	}
 
-	mergedValues := runtime.DeepCopyJSONValue(incomingValues)
+	mergedValues := deepCopyValue(incomingValues)
 	existingMap, existingIsMap := existingValues.(map[string]any)
 	incomingMap, incomingIsMap := incomingValues.(map[string]any)
 	if existingIsMap && incomingIsMap {
@@ -391,7 +421,7 @@ func SubtractPatcherValuesContent(existingFileContent, generatedValuesContent st
 func deepSubtractMap(base, toRemove map[string]any) map[string]any {
 	result := map[string]any{}
 	if base != nil {
-		result = runtime.DeepCopyJSON(base)
+		result = deepCopyValue(base).(map[string]any)
 	}
 	for key, removeValue := range toRemove {
 		existingValue, found := result[key]
@@ -467,6 +497,13 @@ func renderValuesContent(componentName string, chartName string, imageName strin
       image:
         repository: %s
         tag: %s`, imageName, imageTag)
+	}
+
+	if strings.EqualFold(componentName, "rke2-snapshot-controller") {
+		return fmt.Sprintf(`    controller: # change made by rke2-patcher
+      image: # change made by rke2-patcher
+        repository: %s # change made by rke2-patcher
+        tag: %s # change made by rke2-patcher`, imageName, imageTag)
 	}
 
 	if strings.EqualFold(componentName, "rke2-coredns-cluster-autoscaler") {

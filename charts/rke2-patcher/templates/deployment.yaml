@@ -4,7 +4,7 @@ metadata:
   name: rke2-patcher
   namespace: rke2-patcher
 spec:
-  replicas: 1
+  replicas: {{ if .Values.controller.enabled }}{{ .Values.controller.replicas }}{{ else }}1{{ end }}
   selector:
     matchLabels:
       app: rke2-patcher
@@ -21,4 +21,27 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources: {{- toYaml .Values.resources | nindent 12 }}
-          args: []
+          {{- with .Values.env }}
+          env: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.controller.enabled }}
+          # The CLI can still be run in this container with `kubectl exec`
+          command: ["rke2-patcher", "controller"]
+          args:
+            - --leader-elect={{ .Values.controller.leaderElect }}
+            - --health-probe-bind-address=:8081
+          ports:
+            - name: health
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+          {{- else }}
+          # CLI only: idle so the CLI can be run with `kubectl exec`
+          command: ["sleep", "infinity"]
+          {{- end }}

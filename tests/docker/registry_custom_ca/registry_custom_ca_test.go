@@ -42,9 +42,9 @@ func Test_DockerRegistryCustomCA(t *testing.T) {
 }
 
 var _ = Describe("Registry custom CA support", Ordered, func() {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "pod") {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "controller") {
 		BeforeAll(func() {
-			Skip("registry custom CA suite is not supported with EXEC_MODE=pod")
+			Skip("registry custom CA suite is not supported with EXEC_MODE=controller")
 		})
 	}
 

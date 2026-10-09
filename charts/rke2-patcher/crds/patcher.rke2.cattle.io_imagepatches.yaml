@@ -1,0 +1,193 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: imagepatches.patcher.rke2.cattle.io
+spec:
+  group: patcher.rke2.cattle.io
+  names:
+    kind: ImagePatch
+    listKind: ImagePatchList
+    plural: imagepatches
+    shortNames:
+    - ip
+    singular: imagepatch
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.tag
+      name: Tag
+      type: string
+    - jsonPath: .status.appliedTag
+      name: Applied
+      type: string
+    - jsonPath: .status.baselineTag
+      name: Baseline
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ImagePatch pins an RKE2 component to a specific hardened image
+          tag.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ImagePatchSpec defines the desired image of an RKE2 component.
+            properties:
+              component:
+                description: Component is the RKE2 component to patch.
+                enum:
+                - rke2-traefik
+                - rke2-ingress-nginx
+                - rke2-coredns
+                - rke2-dns-node-cache
+                - rke2-metrics-server
+                - rke2-flannel
+                - rke2-canal-calico
+                - rke2-canal-flannel
+                - rke2-coredns-cluster-autoscaler
+                - rke2-snapshot-controller
+                type: string
+                x-kubernetes-validations:
+                - message: component is immutable
+                  rule: self == oldSelf
+              tag:
+                description: |-
+                  Tag is the exact image tag to run. It must be newer than the bundled tag, on the same
+                  minor release line and inside the 45-day patch window. Setting it to the bundled tag
+                  reverts the patch while keeping the ImagePatch.
+                pattern: ^v[0-9]+\.[0-9]+\.[0-9]+.*$
+                type: string
+              upgradePolicy:
+                default: Manual
+                description: UpgradePolicy decides what happens after an RKE2 upgrade.
+                enum:
+                - Manual
+                - AutoRevert
+                type: string
+            required:
+            - component
+            - tag
+            type: object
+          status:
+            description: |-
+              ImagePatchStatus reports what the controller observed. Nothing in it is needed to revert
+              a patch: the bundled tag comes from the chart and ownership from the HelmChartConfig.
+            properties:
+              appliedTag:
+                description: AppliedTag is the tag currently written to the HelmChartConfig.
+                type: string
+              baselineTag:
+                description: BaselineTag is the tag bundled with the running RKE2
+                  release (read from its chart).
+                type: string
+              clusterVersion:
+                description: ClusterVersion is the Kubernetes version of the RKE2
+                  release the patch was applied on.
+                type: string
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                format: int64
+                type: integer
+              runningImages:
+                description: RunningImages lists the images the component's pods currently
+                  run.
+                items:
+                  type: string
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: metadata.name must equal spec.component
+          rule: self.metadata.name == self.spec.component
+    served: true
+    storage: true
+    subresources:
+      status: {}

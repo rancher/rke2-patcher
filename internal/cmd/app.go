@@ -94,6 +94,16 @@ func BuildCLIApp() *cli.App {
 				},
 				Action: runReconcileCommand,
 			},
+			{
+				Name:  "controller",
+				Usage: "Run the ImagePatch controller (declarative patching)",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{Name: "leader-elect", Value: true, Usage: "Use leader election so only one replica reconciles"},
+					&cli.StringFlag{Name: "health-probe-bind-address", Value: ":8081", Usage: "Address of the health probe endpoint"},
+					&cli.StringFlag{Name: "metrics-bind-address", Value: "0", Usage: "Address of the metrics endpoint (0 disables it)"},
+				},
+				Action: runControllerCommand,
+			},
 		},
 	}
 
@@ -254,6 +264,7 @@ func printUsage() {
 	fmt.Println("  rke2-patcher image-list <component> [--with-cves] [--verbose] [--json]")
 	fmt.Println("  rke2-patcher image-patch <component> [--tag TAG] [--dry-run] [--yes|-y]")
 	fmt.Println("  rke2-patcher image-reconcile <component> [--yes|-y]")
+	fmt.Println("  rke2-patcher controller [--leader-elect] [--health-probe-bind-address ADDR] [--metrics-bind-address ADDR]")
 	fmt.Println()
 	fmt.Printf("Supported components: %s\n", strings.Join(components.Supported(), ", "))
 	fmt.Println()
