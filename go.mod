@@ -5,7 +5,7 @@ go 1.26.7
 require (
 	dario.cat/mergo v1.0.2
 	github.com/k3s-io/helm-controller v0.17.9
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/urfave/cli/v2 v2.27.7
 	gopkg.in/yaml.v3 v3.0.1
