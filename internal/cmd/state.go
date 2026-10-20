@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/rancher/rke2-patcher/internal/clistate"
@@ -12,6 +13,7 @@ import (
 const patchStateNamespaceEnv = clistate.NamespaceEnv
 
 var (
+	imagePatchLister          = kube.ListImagePatchNames
 	loadPatchStateFromBackend = clistate.ConfigMapStore{}.Load
 	savePatchStateToBackend   = clistate.ConfigMapStore{}.Save
 	ensureStateNamespace      = kube.EnsureNamespace
@@ -69,6 +71,21 @@ func generateStateWrite(componentName string, currentTag string, targetTag strin
 		EntryName:      entryKey,
 		Entry:          entry,
 	}, nil
+}
+
+// refuseInControllerMode stops new CLI patches while ImagePatch objects exist: the CLI and
+// the controller are exclusive modes. It runs before any other check so the user gets this
+// error, not an unrelated one.
+func refuseInControllerMode() error {
+	names, err := imagePatchLister()
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return fmt.Errorf("refusing to run: the ImagePatch controller mode is in use (ImagePatch objects: %s); manage patches through ImagePatch objects, or delete them all to switch back to the CLI (image-reconcile still works)", strings.Join(names, ", "))
 }
 
 // persistPatchDecision persists the patch decision in the Kubernetes ConfigMap,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -15,7 +16,10 @@ type HelmChartObject struct {
 	Content   string
 }
 
-// ListHelmChartsByIdentity lists HelmChart objects in the cluster that match the given name and namespace.
+// ListHelmChartsByIdentity returns the HelmChart with the given name and namespace, as a
+// single-element slice, or an empty slice if it does not exist. It is a direct Get rather than
+// a List+filter: callers always look up one specific, named chart, and a List would fetch every
+// HelmChart in the namespace (including their embedded chart archives) just to discard the rest.
 func ListHelmChartsByIdentity(name string, namespace string) ([]HelmChartObject, error) {
 	trimmedName := strings.TrimSpace(name)
 	trimmedNamespace := strings.TrimSpace(namespace)
@@ -32,31 +36,22 @@ func ListHelmChartsByIdentity(name string, namespace string) ([]HelmChartObject,
 	}
 
 	gvr := schema.GroupVersionResource{Group: "helm.cattle.io", Version: "v1", Resource: "helmcharts"}
-	list, err := dynamicClient.Resource(gvr).Namespace(trimmedNamespace).List(context.Background(), metav1.ListOptions{})
+	item, err := dynamicClient.Resource(gvr).Namespace(trimmedNamespace).Get(context.Background(), trimmedName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list helmcharts in %s: %w", trimmedNamespace, err)
+		if k8serrors.IsNotFound(err) {
+			return []HelmChartObject{}, nil
+		}
+		return nil, fmt.Errorf("failed to get helmchart %s/%s: %w", trimmedNamespace, trimmedName, err)
 	}
 
-	results := make([]HelmChartObject, 0, len(list.Items))
-	for _, item := range list.Items {
-		if strings.TrimSpace(item.GetName()) != trimmedName {
-			continue
-		}
-		if strings.TrimSpace(item.GetNamespace()) != trimmedNamespace {
-			continue
-		}
-
-		content, err := item.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-
-		results = append(results, HelmChartObject{
-			Name:      item.GetName(),
-			Namespace: item.GetNamespace(),
-			Content:   string(content),
-		})
+	content, err := item.MarshalJSON()
+	if err != nil {
+		return nil, err
 	}
 
-	return results, nil
+	return []HelmChartObject{{
+		Name:      item.GetName(),
+		Namespace: item.GetNamespace(),
+		Content:   string(content),
+	}}, nil
 }

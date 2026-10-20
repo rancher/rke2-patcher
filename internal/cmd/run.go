@@ -184,6 +184,10 @@ func runImageListWithCVEs(component components.Component, runningImages []kube.P
 // runImagePatch attempts to patch the running image of the component to a new tag by writing a HelmChartConfig manifest
 // with the new image, handling potential conflicts with existing HelmChartConfigs and respecting patch limits
 func runImagePatch(component components.Component, options imagePatchOptions) error {
+	if err := refuseInControllerMode(); err != nil {
+		return err
+	}
+
 	runningImages, err := kube.ListRunningImages(component.Workload, component.Repository)
 	if err != nil {
 		return fmt.Errorf("running image unavailable: %w", err)
@@ -283,6 +287,8 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 	return nil
 }
 
+// runReconcile works in both modes: it only reverts patches the CLI made, which the controller
+// never manages, and reverting them is how a cluster is moved to the controller mode
 func runReconcile(component components.Component, autoApprove bool) error {
 	currentVersion, err := clusterVersionResolver()
 	if err != nil {
@@ -370,7 +376,7 @@ func runReconcile(component components.Component, autoApprove bool) error {
 	return removeEntriesFromState(namespace, keysToRemove)
 }
 
-// reconcileEntry removes the patcher values from the HelmChartConfig file specified in the entry
+// reconcileEntry removes the patcher values from the HelmChartConfig specified in the entry
 func reconcileEntry(entry patchEntry) (bool, error) {
 	return clistate.RevertEntry(entry)
 }
