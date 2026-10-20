@@ -26,6 +26,12 @@ func FindRunningImageByRepository(namespace string, selector string, repository 
 		return "", err
 	}
 
+	// collectRunningImagesByRepository already errors out when nothing matches, so this
+	// should be unreachable; kept so a future change there can never turn into a panic here.
+	if len(images) == 0 {
+		return "", fmt.Errorf("no running image found for repository %q in namespace %q (selector: %q)", repository, namespace, selector)
+	}
+
 	if len(images) > 1 {
 		observed := make([]string, 0, len(images))
 		for _, image := range images {

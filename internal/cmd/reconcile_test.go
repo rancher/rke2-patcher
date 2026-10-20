@@ -145,7 +145,7 @@ spec:
 			Content: helmChartConfigContent,
 		}, nil
 	}
-	kube.ApplyHelmChartConfig = func(content string) error {
+	kube.ApplyHelmChartConfig = func(content string, _ string) error {
 		appliedContent = content
 		return nil
 	}
@@ -215,7 +215,7 @@ func TestRunReconcile_DoesNotRemoveStateWhenFileIsMissing(t *testing.T) {
 		// Return nil to simulate the "file is missing" scenario
 		return nil, nil
 	}
-	kube.ApplyHelmChartConfig = func(content string) error {
+	kube.ApplyHelmChartConfig = func(content string, _ string) error {
 		return nil
 	}
 	t.Cleanup(func() {
@@ -272,7 +272,7 @@ func TestRunReconcile_OnlyTouchesTargetComponent(t *testing.T) {
 		// Return nil to simulate the "file is missing" scenario
 		return nil, nil
 	}
-	kube.ApplyHelmChartConfig = func(content string) error {
+	kube.ApplyHelmChartConfig = func(content string, _ string) error {
 		return nil
 	}
 	t.Cleanup(func() {
@@ -335,7 +335,7 @@ spec:
 		}
 		return nil, nil
 	}
-	kube.ApplyHelmChartConfig = func(content string) error {
+	kube.ApplyHelmChartConfig = func(content string, _ string) error {
 		if strings.Contains(content, "rke2-traefik") {
 			applied["traefik"] = content
 		}

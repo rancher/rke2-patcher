@@ -266,7 +266,11 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 		return err
 	}
 
-	if err := kube.ApplyHelmChartConfig(contentToWrite); err != nil {
+	expectedResourceVersion := ""
+	if conflict != nil {
+		expectedResourceVersion = conflict.ResourceVersion
+	}
+	if err := kube.ApplyHelmChartConfig(contentToWrite, expectedResourceVersion); err != nil {
 		return fmt.Errorf("failed to apply HelmChartConfig to cluster: %w", err)
 	}
 
@@ -372,11 +376,11 @@ func reconcileEntry(entry patchEntry) (bool, error) {
 		return false, nil
 	}
 
-	// Map known component names to actual HelmChartConfig resource names
+	// Several components share one HelmChartConfig (e.g. rke2-canal-calico and
+	// rke2-canal-flannel both patch rke2-canal); resolve the chart it was actually written to.
 	resourceName := entry.Component
-	switch entry.Component {
-	case "rke2-canal-flannel":
-		resourceName = "rke2-canal"
+	if component, err := components.Resolve(entry.Component); err == nil {
+		resourceName = component.HelmChartConfigName
 	}
 	conflict, err := kube.GetHelmChartConfigByIdentity(resourceName, "kube-system")
 	if err != nil {
@@ -396,7 +400,7 @@ func reconcileEntry(entry patchEntry) (bool, error) {
 		return false, fmt.Errorf("failed to strip patcher values: %w", err)
 	}
 
-	if err := kube.ApplyHelmChartConfig(updatedContent); err != nil {
+	if err := kube.ApplyHelmChartConfig(updatedContent, conflict.ResourceVersion); err != nil {
 		return false, fmt.Errorf("failed to apply reconciled HelmChartConfig: %w", err)
 	}
 
