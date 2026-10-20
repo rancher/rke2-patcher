@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rancher/rke2-patcher/internal/clistate"
 	"github.com/rancher/rke2-patcher/internal/components"
 	"github.com/rancher/rke2-patcher/internal/cve"
 	"github.com/rancher/rke2-patcher/internal/kube"
@@ -371,38 +372,5 @@ func runReconcile(component components.Component, autoApprove bool) error {
 
 // reconcileEntry removes the patcher values from the HelmChartConfig file specified in the entry
 func reconcileEntry(entry patchEntry) (bool, error) {
-	generatedValuesContent := strings.TrimSpace(entry.GeneratedValuesContent)
-	if generatedValuesContent == "" {
-		return false, nil
-	}
-
-	// Several components share one HelmChartConfig (e.g. rke2-canal-calico and
-	// rke2-canal-flannel both patch rke2-canal); resolve the chart it was actually written to.
-	resourceName := entry.Component
-	if component, err := components.Resolve(entry.Component); err == nil {
-		resourceName = component.HelmChartConfigName
-	}
-	conflict, err := kube.GetHelmChartConfigByIdentity(resourceName, "kube-system")
-	if err != nil {
-		return false, fmt.Errorf("failed to get HelmChartConfig for reconciliation: %w", err)
-	}
-	if conflict == nil {
-		return false, nil // nothing to reconcile
-	}
-
-	existingContent := strings.TrimSpace(conflict.Content)
-	if existingContent == "" {
-		return false, nil
-	}
-
-	updatedContent, err := patcher.SubtractPatcherValuesContent(existingContent, generatedValuesContent)
-	if err != nil {
-		return false, fmt.Errorf("failed to strip patcher values: %w", err)
-	}
-
-	if err := kube.ApplyHelmChartConfig(updatedContent, conflict.ResourceVersion); err != nil {
-		return false, fmt.Errorf("failed to apply reconciled HelmChartConfig: %w", err)
-	}
-
-	return true, nil
+	return clistate.RevertEntry(entry)
 }

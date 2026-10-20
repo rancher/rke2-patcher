@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/rancher/rke2-patcher/internal/components"
+	"github.com/rancher/rke2-patcher/internal/policy"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -245,4 +247,21 @@ func SplitImage(image string) (string, string) {
 	}
 
 	return trimmed, "latest"
+}
+
+// ClusterZeroDay returns the build date of the running kube-apiserver image, which
+// anchors the patch window of the cluster
+func ClusterZeroDay() (time.Time, error) {
+	image, err := FindRunningImageByRepository(policy.KubeAPIServerNamespace, policy.KubeAPIServerSelector, policy.KubeAPIServerImageRepository)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to determine kube-apiserver image for patch window: %w", err)
+	}
+
+	_, tag := SplitImage(image)
+	date, parseOK := policy.BuildDate(tag)
+	if !parseOK {
+		return time.Time{}, fmt.Errorf("failed to extract build date from kube-apiserver tag %q", tag)
+	}
+
+	return date, nil
 }
