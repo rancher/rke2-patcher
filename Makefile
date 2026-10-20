@@ -15,7 +15,7 @@ ifneq ($(filter v%,$(TAG)),)
 VERSION := $(patsubst v%,%,$(TAG))
 endif
 
-.PHONY: help build build-image push-image \
+.PHONY: help build build-image push-image generate \
 	test-docker-image_cve test-docker-image_list test-docker-patch_components \
 		test-docker-non_prime \
 	test-docker-flannel_traefik_patch_components test-docker-patch_reconcile_component_ha \
@@ -29,6 +29,7 @@ help:
 	@echo "Build:"
 	@echo "  make build"
 	@echo "  make build-image"
+	@echo "  make generate        # regenerate deepcopy code and the ImagePatch CRD"
 	@echo ""
 	@echo "Docker scenario tests:"
 	@echo "  make test-docker-image_cve EXEC_MODE=binary|pod"
@@ -53,6 +54,12 @@ help:
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+
+CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
+
+generate:
+	$(CONTROLLER_GEN) object paths=./api/...
+	$(CONTROLLER_GEN) crd paths=./api/... output:crd:dir=charts/rke2-patcher/crds
 
 test-docker-image_cve: build
 	EXEC_MODE=$(EXEC_MODE) go test -v -timeout=80m ./tests/docker/image_cve/image_cve_test.go -ginkgo.v -rke2Version v1.35.3+rke2r3 -patcherBin $(CURDIR)/$(BINARY)
