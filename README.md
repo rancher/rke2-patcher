@@ -51,8 +51,8 @@ make test-docker-airgap                 # Test airgap deployment
 ```
 
 All docker tests support:
-- `EXEC_MODE=binary` (default): Run tests as host CLI
-- `EXEC_MODE=pod`: Run tests as Kubernetes Job in pod
+- `EXEC_MODE=binary` (default): run the CLI on the server node; patches are tracked in the `rke2-patcher-state` ConfigMap.
+- `EXEC_MODE=controller`: deploy the chart with the ImagePatch controller; `image-patch` / `image-reconcile` steps are performed through `ImagePatch` objects (create/update, delete), read-only commands run in the patcher pod. `airgap`, `image_cve_local` and `registry_custom_ca` are binary-only. `cli_controller_migration` (CLI and controller in the same cluster) runs in binary mode, and `auto_revert_upgrade` (ImagePatch `upgradePolicy: AutoRevert` across an RKE2 upgrade) in controller mode only.
 
 For airgap tests, specify bundle location:
 ```bash
@@ -177,7 +177,8 @@ rke2-patcher image-patch rke2-traefik --yes
 - For `rke2-canal-calico`, it updates the chart values under `calico.cniImage`, `calico.nodeImage`, `calico.flexvolImage`, and `calico.kubeControllerImage`.
 - For `rke2-canal-flannel`, it updates the chart values under `flannel.image.repository` and `flannel.image.tag`.
 - For `rke2-coredns-cluster-autoscaler`, it patches the shared `rke2-coredns` chart and updates `autoscaler.image.repository` and `autoscaler.image.tag`.
-- For `rke2-ingress-nginx`, it updates `controller.image.repository` and `controller.image.tag`.
+- For `rke2-ingress-nginx`, it updates `controller.image.repository` and `controller.image.primeTag` (the tag key Prime clusters use).
+- For `rke2-snapshot-controller`, it updates `controller.image.repository` and `controller.image.tag`.
 
 ### 4) Reconcile one component (stale cleanup or patch revert)
 
@@ -200,6 +201,216 @@ Typical upgrade flow:
 2. Upgrade RKE2.
 3. Run `rke2-patcher image-reconcile <component>` for each patched component.
 4. Once stale entries are cleared, `image-patch` is allowed again.
+
+## Declarative mode: ImagePatch controller (prototype)
+
+Besides the CLI, `rke2-patcher controller` runs a controller that patches components declared in `ImagePatch` objects (`patcher.rke2.cattle.io/v1alpha1`, cluster-scoped). This suits fleets: distribute `ImagePatch` objects (e.g. with Fleet) and every cluster enforces its own guardrails.
+
+### Installing the controller
+
+Requirements:
+
+- An RKE2 Prime cluster (`prime: true`) and `kubectl` + `helm` with cluster-admin access to it.
+- An `rke2-patcher` image that contains the controller (`rke2-patcher controller`). Releases up to 1.2.4 do not; see [Using an unreleased build](#using-an-unreleased-build). Release images are published to the Rancher Prime registry (`registry.rancher.com/rancher/rke2-patcher`).
+
+The chart lives in this repository (`charts/rke2-patcher`); it is not published to a Helm repository. From a checkout:
+
+```bash
+helm upgrade --install rke2-patcher ./charts/rke2-patcher \
+  --namespace rke2-patcher --create-namespace \
+  --set image.repository=registry.rancher.com/rancher/rke2-patcher \
+  --set image.tag=<version>
+```
+
+Use the `rke2-patcher` namespace: the chart's templates expect it, and the controller uses it for leader election. The chart installs:
+
+- the `ImagePatch` CRD (`imagepatches.patcher.rke2.cattle.io`),
+- a ServiceAccount with a ClusterRole/ClusterRoleBinding,
+- a Deployment on control-plane nodes running `rke2-patcher controller` (leader election, health probes on `:8081`). The container also ships the CLI, so `kubectl exec` works as before.
+
+Check that it is running:
+
+```bash
+kubectl -n rke2-patcher rollout status deployment/rke2-patcher
+kubectl get crd imagepatches.patcher.rke2.cattle.io
+kubectl -n rke2-patcher logs deployment/rke2-patcher
+```
+
+Then pick an eligible tag and create an `ImagePatch` (example below):
+
+```bash
+kubectl -n rke2-patcher exec deployment/rke2-patcher -- rke2-patcher image-list rke2-coredns
+```
+
+#### Chart values
+
+| Value | Default | Description |
+|---|---|---|
+| `image.repository` / `image.tag` | `rancher/rke2-patcher` / `1.2.4` | Image to run; must contain the controller. |
+| `image.pullPolicy` | `IfNotPresent` | Use `Always` when re-pushing the same tag. |
+| `controller.enabled` | `true` | `false` deploys the CLI-only pod (idle container for `kubectl exec`), as before the controller existed. |
+| `controller.replicas` | `1` | Replicas elect a leader: only one reconciles, the others are standbys that take over if it fails. |
+| `env` | `[]` | Extra environment variables, e.g. the registry settings described in [Environment variables](#environment-variables). |
+| `resources` | `{}` | Container resources. |
+| `nodeSelector` | `node-role.kubernetes.io/control-plane: "true"` | Where the pod runs. Set to `null` to drop the default selector. |
+| `tolerations` | `[]` | Pod tolerations, e.g. for tainted control-plane nodes. |
+| `affinity` | `{}` | Pod affinity rules. |
+
+Registry settings for a private or mirrored registry go through `env`; credentials can come from a Secret:
+
+```yaml
+env:
+  - name: RKE2_PATCHER_REGISTRY
+    value: registry.example.com
+  - name: RKE2_PATCHER_REGISTRY_USERNAME
+    valueFrom:
+      secretKeyRef: {name: rke2-patcher-registry, key: username}
+  - name: RKE2_PATCHER_REGISTRY_PASSWORD
+    valueFrom:
+      secretKeyRef: {name: rke2-patcher-registry, key: password}
+```
+
+Current limitations of the chart: it has no `imagePullSecrets` (the nodes must be able to pull the image without them, e.g. via `/etc/rancher/rke2/registries.yaml`), and no volumes, so `RKE2_PATCHER_REGISTRY_CA_FILE` can only point to a file that is already in the image.
+
+#### Using an unreleased build
+
+Build and push an image from this repository, then install the chart with it:
+
+```bash
+make build-image REPO=<registry>/<org> TAG=<tag>
+docker push <registry>/<org>/rke2-patcher:<tag>
+
+helm upgrade --install rke2-patcher ./charts/rke2-patcher \
+  --namespace rke2-patcher --create-namespace \
+  --set image.repository=<registry>/<org>/rke2-patcher \
+  --set image.tag=<tag>
+```
+
+If the chart is not available where you run `helm` (e.g. a remote machine), push it to an OCI registry and install it from there:
+
+```bash
+helm package charts/rke2-patcher --version <chart-version>
+helm push rke2-patcher-<chart-version>.tgz oci://<registry>/<org>
+helm upgrade --install rke2-patcher oci://<registry>/<org>/rke2-patcher --version <chart-version> \
+  --namespace rke2-patcher --create-namespace \
+  --set image.repository=<registry>/<org>/rke2-patcher --set image.tag=<tag>
+```
+
+Use different values for the chart version and the image tag when both go to the same repository, otherwise one overwrites the other.
+
+#### Upgrading and uninstalling
+
+- **Upgrading**: `helm upgrade` with the new image tag. Helm does not update CRDs on upgrade, so apply the CRD of the new version first: `kubectl apply -f charts/rke2-patcher/crds/`.
+- **Uninstalling**: delete all `ImagePatch` objects first and wait until they are gone; each deletion reverts its patch. Then `helm uninstall rke2-patcher -n rke2-patcher`. Helm leaves the CRD in place; remove it with `kubectl delete crd imagepatches.patcher.rke2.cattle.io`.
+- If the controller was removed while `ImagePatch` objects still existed, their finalizer blocks deletion. Remove it by hand (this does **not** revert the patch): `kubectl patch imagepatch <name> --type=merge -p '{"metadata":{"finalizers":null}}'`.
+
+### Using ImagePatch objects
+
+```yaml
+apiVersion: patcher.rke2.cattle.io/v1alpha1
+kind: ImagePatch
+metadata:
+  name: rke2-traefik          # must equal spec.component (one ImagePatch per component)
+spec:
+  component: rke2-traefik
+  tag: v3.3.6-build20260912   # exact tag, as with `image-patch --tag`
+  upgradePolicy: Manual       # Manual (default) | AutoRevert
+```
+
+```bash
+kubectl get imagepatches      # TAG, APPLIED, BASELINE, READY, REASON
+```
+
+- The same guardrails as `image-patch` apply: Prime only, tag newer than the bundled tag, same minor release line, 45-day patch window (`rke2-ingress-nginx` exempt), and no patches while stale patches from a previous RKE2 version exist. Violations show up as a `Blocked` condition with a reason (`OutsidePatchWindow`, `MinorVersionChange`, `TagNotFound`, `NotNewer`, `NotPrime`, `StalePatchesExist`, `ConflictingOverride`, `CLIPatchesExist`, `ChartLayoutMismatch`); nothing is written.
+- Values are merged into the existing `HelmChartConfig`. Only the specific repository/tag keys a component's patch generates are ever inspected or written; any other value, and any other field on the object (labels, `failurePolicy`, `valuesSecrets`, etc.), is left exactly as it is. If those keys already hold values set outside an ImagePatch (not carrying the ownership annotation below), the ImagePatch is `Blocked/ConflictingOverride` instead of overwriting them.
+- If those same keys are removed or edited by hand on a `HelmChartConfig` the ImagePatch owns, the controller puts `spec.tag` back (`DriftCorrected` event).
+- Setting `spec.tag` to the bundled tag reverts the patch but keeps the ImagePatch (`Ready/AtBaseline`).
+- Deleting an ImagePatch reverts the patch (a finalizer strips the patcher-managed values). Values the ImagePatch did not apply are never touched.
+- After an RKE2 upgrade:
+  - `Manual`: nothing is touched. The ImagePatch becomes `Stale` (and a `Stale` event is emitted); delete it to revert.
+  - `AutoRevert`: the patch is reverted automatically and the component runs the image bundled with the new release, even if `spec.tag` would still be valid on it. The ImagePatch stays, with `Ready=False/RevertedAfterUpgrade`, and the annotation `patcher.rke2.cattle.io/reverted-generation` records the reverted spec generation so re-applying the unchanged manifest (e.g. by GitOps) does not bring the patch back. To patch again, set a new `spec.tag`; to apply the same tag on the new release deliberately, remove the annotation (`kubectl annotate imagepatch <name> patcher.rke2.cattle.io/reverted-generation-`) or delete and recreate the ImagePatch.
+- If the bundled tag ever becomes newer than the applied `spec.tag`, the patch is reverted (`Blocked/NotNewer`) instead of keeping an older image.
+
+#### How the controller tracks patches (no state)
+
+The controller does not use the `rke2-patcher-state` ConfigMap or any other store:
+
+- **Bundled tag**: read from the chart RKE2 embeds in each `HelmChart` (`spec.chartContent`), at the same values path the patcher writes. RKE2 replaces it on upgrade, so it always matches the running release. The `repository` next to that path must be the component's repository, otherwise the ImagePatch is `Blocked/ChartLayoutMismatch` (this is the case for `rke2-dns-node-cache`, whose values the patcher does not write correctly yet).
+- **Ownership**: the `HelmChartConfig` the controller patched carries the annotation `patcher.rke2.cattle.io/<component>: <RKE2 version>`. Only values with that annotation are re-applied or reverted, and the version detects patches from a previous RKE2 release.
+- **Status** only reports what was observed; losing it does not prevent reverting.
+
+### CLI mode and controller mode
+
+The two modes are exclusive:
+
+- While any ImagePatch exists, `rke2-patcher image-patch` refuses to run. `image-reconcile` keeps working, since it only reverts patches made with the CLI.
+- While the `rke2-patcher-state` ConfigMap holds CLI patches, every ImagePatch is `Blocked/CLIPatchesExist`; nothing is written.
+
+### Migrating between the CLI and the controller
+
+Switching modes always goes through the bundled images: the patches of one mode are reverted, then the other mode applies them again. Each migrated component therefore rolls out twice (to its bundled image, then to the patched one); plan for that on production clusters.
+
+#### From the CLI to the controller
+
+1. **Install the controller** as described in [Installing the controller](#installing-the-controller).
+
+2. **List the patches made with the CLI**: they are stored in the `rke2-patcher-state` ConfigMap (in `RKE2_PATCHER_CVE_NAMESPACE`, `rke2-patcher` by default):
+
+   ```bash
+   kubectl -n rke2-patcher get configmap rke2-patcher-state -o jsonpath='{.data.patch-limit-state\.json}'
+   ```
+
+   Each entry records the `component`, the RKE2 version it was applied on (`clusterVersion`) and the tag it set (`patchedToTag`). If there is no ConfigMap or no entries, there is nothing to migrate: go to step 3 and skip step 4.
+
+3. **Create one ImagePatch per component** with `spec.tag` set to the entry's `patchedToTag`, so the component ends up on the same image:
+
+   ```yaml
+   apiVersion: patcher.rke2.cattle.io/v1alpha1
+   kind: ImagePatch
+   metadata:
+     name: rke2-coredns
+   spec:
+     component: rke2-coredns
+     tag: <patchedToTag>
+   ```
+
+   They stay `Blocked/CLIPatchesExist` and change nothing while the CLI state has entries. From now on `rke2-patcher image-patch` refuses to run, because ImagePatch objects exist.
+
+   Entries recorded on a previous RKE2 version (`clusterVersion` differs from the cluster's) are leftovers that the CLI would also ask you to reconcile; their tag is usually older than what the current release bundles, so do not recreate them as ImagePatches.
+
+4. **Revert the CLI patches**, back to back, for every component in the state (including leftovers from a previous RKE2 version):
+
+   ```bash
+   rke2-patcher image-reconcile <component> --yes
+   ```
+
+   `image-reconcile` keeps working while ImagePatches exist, since it only reverts patches made with the CLI. The controller blocks *every* ImagePatch until the *last* CLI entry is gone, so components reconciled early run their bundled image until then. As soon as the state is empty, the ImagePatches apply their tags.
+
+5. **Verify**: the CLI state is empty and every ImagePatch is `Ready`:
+
+   ```bash
+   kubectl -n rke2-patcher get configmap rke2-patcher-state -o jsonpath='{.data.patch-limit-state\.json}'
+   kubectl get imagepatches    # READY=True, REASON=Patched, APPLIED=<tag>
+   ```
+
+#### From the controller back to the CLI
+
+1. **Delete all ImagePatch objects** and wait until they are gone; each deletion reverts its patch (the component rolls out to its bundled image):
+
+   ```bash
+   kubectl delete imagepatches --all --wait=false
+   kubectl wait --for=delete imagepatches --all --timeout=5m
+   ```
+
+2. **Stop the controller**, either by switching the chart to the CLI-only pod or by uninstalling it (see [Upgrading and uninstalling](#upgrading-and-uninstalling)):
+
+   ```bash
+   helm upgrade rke2-patcher ./charts/rke2-patcher -n rke2-patcher --reuse-values --set controller.enabled=false
+   ```
+
+   Delete the ImagePatches *before* stopping the controller: their finalizer is only removed by the controller.
+
+3. **Patch with the CLI** again: `rke2-patcher image-patch <component> [--tag TAG]` works once no ImagePatch exists.
 
 ## Supported components
 

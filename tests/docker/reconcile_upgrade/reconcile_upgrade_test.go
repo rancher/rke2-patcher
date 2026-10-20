@@ -15,6 +15,10 @@ const (
 	upgradeRKE2Version      = "v1.35.4+rke2r1"
 	expectedCanalFlannelTag = "v0.28.2-build20260414"
 	expectedIngressNginxTag = "v1.14.5-prime3"
+
+	// Bundled with upgradeRKE2Version: image-reconcile reverts the patches to these
+	upgradedBundledCanalFlannelTag = "v0.28.4-build20260415"
+	upgradedBundledIngressNginxTag = "v1.14.5-prime3"
 )
 
 var (
@@ -117,28 +121,33 @@ var _ = Describe("Upgrade and patching behavior", Ordered, func() {
 
 	Context("Patch rke2-coredns after upgrade works", func() {
 		It("patches rke2-coredns successfully after upgrade", func() {
+			// Right after the upgrade CoreDNS may still run the previous bundled image; the next
+			// tag is only valid once the newly bundled one has rolled out, so retry until then
 			Eventually(func(g Gomega) {
-				_, err := tc.RunImagePatch("rke2-coredns", false, "")
-				Expect(err).NotTo(HaveOccurred())
-			}, "120s", "10s").Should(Succeed())
+				output, err := tc.RunImagePatch("rke2-coredns", false, "")
+				g.Expect(err).NotTo(HaveOccurred(), output)
+			}, "300s", "10s").Should(Succeed())
 		})
 	})
 
-	Context("Check rke2-ingress-nginx and rke2-canal-flannel tags are unchanged", func() {
-		It("verifies rke2-canal-flannel image tag is unchanged", func() {
+	// image-reconcile removed the patches, so after RKE2 re-renders the charts the components
+	// run the tags bundled with the upgraded release (checking right after the reconcile would
+	// still see the old patched tags, which only passed by timing)
+	Context("Check rke2-ingress-nginx and rke2-canal-flannel run the upgraded release's bundled tags", func() {
+		It("verifies rke2-canal-flannel runs the bundled tag", func() {
 			Eventually(func(g Gomega) {
 				tag, err := tc.GetRunningImageTag("kube-system", "daemonset", "rke2-canal", "rancher/hardened-flannel")
-				Expect(err).NotTo(HaveOccurred())
-				g.Expect(tag).To(Equal(expectedCanalFlannelTag))
-			}, "60s", "5s").Should(Succeed())
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tag).To(Equal(upgradedBundledCanalFlannelTag))
+			}, "300s", "5s").Should(Succeed())
 		})
 
-		It("verifies rke2-ingress-nginx image tag is unchanged", func() {
+		It("verifies rke2-ingress-nginx runs the bundled tag", func() {
 			Eventually(func(g Gomega) {
 				tag, err := tc.GetRunningImageTag("kube-system", "daemonset", "rke2-ingress-nginx-controller", "rancher/nginx-ingress-controller")
-				Expect(err).NotTo(HaveOccurred())
-				g.Expect(tag).To(Equal(expectedIngressNginxTag))
-			}, "60s", "5s").Should(Succeed())
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tag).To(Equal(upgradedBundledIngressNginxTag))
+			}, "300s", "5s").Should(Succeed())
 		})
 	})
 })

@@ -20,12 +20,13 @@ const podPatcherBinaryPath = "/usr/local/bin/rke2-patcher"
 const patcherNamespace = "rke2-patcher"
 const patcherReleaseName = "rke2-patcher"
 const patcherImageRepository = "rancher/rke2-patcher"
+const imagePatchCRDName = "imagepatches.patcher.rke2.cattle.io"
 const TrivyVersion = "0.74.0"
 const nodePatcherImageTarballPath = "/var/lib/rancher/rke2/agent/images/rke2-patcher-test.tar"
 const testClusterToken = "testing"
 const execModeEnvName = "EXEC_MODE"
 const execModeBinary = "binary"
-const execModePod = "pod"
+const execModeController = "controller"
 const projectRootRelativeFromSuite = "../../.."
 
 type TestConfig struct {
@@ -37,6 +38,11 @@ type TestConfig struct {
 	PatcherImage      string
 	RKE2Version       string
 	NonPrimeCluster   bool
+	// EnableController deploys the chart with the ImagePatch controller in binary mode too
+	// (controller mode always deploys it). CLI commands keep running on the node.
+	EnableController bool
+	// ControllerReplicas sets the controller replicas (leader election); 0 keeps the chart default
+	ControllerReplicas int
 	ServerConfig      string
 	RegistriesConfig  string
 	Server            DockerNode
@@ -63,8 +69,8 @@ func NewTestConfig(version string, patcherBinary string) (*TestConfig, error) {
 	if execMode == "" {
 		execMode = execModeBinary
 	}
-	if execMode != execModeBinary && execMode != execModePod {
-		return nil, fmt.Errorf("invalid %s value %q: expected %s or %s", execModeEnvName, execMode, execModeBinary, execModePod)
+	if execMode != execModeBinary && execMode != execModeController {
+		return nil, fmt.Errorf("invalid %s value %q: expected %s or %s", execModeEnvName, execMode, execModeBinary, execModeController)
 	}
 
 	projectRoot, err := resolveProjectRoot()
@@ -345,7 +351,7 @@ func (config *TestConfig) ProvisionServer() error {
 		}
 	}
 
-	if config.ExecMode == execModePod {
+	if config.controllerDeployed() {
 		if err := config.PreparePatcherPodExecution(); err != nil {
 			return err
 		}
@@ -462,6 +468,14 @@ func (config *TestConfig) PreparePatcherPodExecution() error {
 		return fmt.Errorf("failed waiting for patcher deployment rollout: %s: %w", out, err)
 	}
 
+	// The chart ships the ImagePatch CRD; fail here with a clear message rather than on the
+	// first ImagePatch a scenario creates
+	if config.controllerDeployed() {
+		if out, err := config.Server.RunKubectl(fmt.Sprintf("wait --for=condition=Established crd/%s --timeout=60s", imagePatchCRDName)); err != nil {
+			return fmt.Errorf("ImagePatch CRD %s from the chart is not established: %s: %w", imagePatchCRDName, out, err)
+		}
+	}
+
 	return nil
 }
 
@@ -503,14 +517,18 @@ func (config *TestConfig) InstallPatcherChart(imageRef string) error {
 
 	chartPath := filepath.Join(config.ProjectRoot, "charts", "rke2-patcher")
 	helmCmd := fmt.Sprintf(
-		"helm upgrade --install %s %q --kubeconfig %q --namespace %s --create-namespace --set image.repository=%q --set image.tag=%q --set image.pullPolicy=IfNotPresent --wait --timeout 180s",
+		"helm upgrade --install %s %q --kubeconfig %q --namespace %s --create-namespace --set image.repository=%q --set image.tag=%q --set image.pullPolicy=IfNotPresent --set controller.enabled=%t --wait --timeout 180s",
 		patcherReleaseName,
 		chartPath,
 		config.KubeconfigFile,
 		patcherNamespace,
 		repository,
 		tag,
+		config.controllerDeployed(),
 	)
+	if config.ControllerReplicas > 0 {
+		helmCmd += fmt.Sprintf(" --set controller.replicas=%d", config.ControllerReplicas)
+	}
 
 	if out, err := RunCommand(helmCmd); err != nil {
 		return fmt.Errorf("failed to install patcher chart: %s: %w", out, err)
@@ -739,7 +757,17 @@ func (config *TestConfig) RunImageList(component string, withCVEs bool) (string,
 	return out, nil
 }
 
+// RunImagePatch patches a component like `rke2-patcher image-patch` (tag "" means the next tag).
+// In controller mode it goes through an ImagePatch instead; dry runs always use the CLI.
 func (config *TestConfig) RunImagePatch(component string, dryRun bool, tag string) (string, error) {
+	if config.ExecMode == execModeController && !dryRun {
+		return config.runControllerPatch(component, tag)
+	}
+	return config.RunCLIImagePatch(component, dryRun, tag)
+}
+
+// RunCLIImagePatch always runs the CLI (on the node, or in the patcher pod in controller mode)
+func (config *TestConfig) RunCLIImagePatch(component string, dryRun bool, tag string) (string, error) {
 	args := []string{"image-patch"}
 	if dryRun {
 		args = append(args, "--dry-run")
@@ -757,7 +785,17 @@ func (config *TestConfig) RunImagePatch(component string, dryRun bool, tag strin
 	return out, nil
 }
 
+// RunImageReconcile reverts a component like `rke2-patcher image-reconcile`. In controller
+// mode it deletes the component's ImagePatch (falling back to the CLI if there is none).
 func (config *TestConfig) RunImageReconcile(component string, dryRun bool) (string, error) {
+	if config.ExecMode == execModeController && !dryRun {
+		return config.runControllerReconcile(component)
+	}
+	return config.RunCLIImageReconcile(component, dryRun)
+}
+
+// RunCLIImageReconcile always runs the CLI (on the node, or in the patcher pod in controller mode)
+func (config *TestConfig) RunCLIImageReconcile(component string, dryRun bool) (string, error) {
 	args := []string{"image-reconcile"}
 	if dryRun {
 		args = append(args, "--dry-run")
@@ -783,7 +821,7 @@ func (config *TestConfig) runPatcherCommand(args []string) (string, error) {
 		}
 		commandParts = append(commandParts, nodePatcherBinaryPath, joinedArgs)
 		return config.Server.RunCmdOnNode(strings.Join(commandParts, " "))
-	case execModePod:
+	case execModeController:
 		patcherInvocation := podPatcherBinaryPath + " " + joinedArgs
 		if envAssignments != "" {
 			patcherInvocation = "env " + envAssignments + " " + patcherInvocation
@@ -867,6 +905,13 @@ func (config *TestConfig) DumpResources() string {
 	out, err := config.Server.RunKubectl("get pods,deploy,ds -A -o wide")
 	if err != nil {
 		return fmt.Sprintf("failed to dump cluster resources: %v", err)
+	}
+	if config.controllerDeployed() {
+		if imagePatches, err := config.Server.RunKubectl("get imagepatch -o yaml"); err == nil {
+			out += "\n--- ImagePatches\n" + imagePatches
+		}
+		out += "\n--- ImagePatch events\n" + config.ImagePatchEvents()
+		out += "\n--- controller logs\n" + config.ControllerLogs(200)
 	}
 	return out
 }

@@ -35,9 +35,9 @@ func Test_DockerAirgap(t *testing.T) {
 }
 
 var _ = Describe("Airgap environment", Ordered, func() {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "pod") {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "controller") {
 		BeforeAll(func() {
-			Skip("airgap suite is not supported with EXEC_MODE=pod")
+			Skip("airgap suite is not supported with EXEC_MODE=controller")
 		})
 	}
 

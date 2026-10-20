@@ -26,9 +26,9 @@ func Test_DockerImageCVELocal(t *testing.T) {
 }
 
 var _ = Describe("Image CVE scan", Ordered, func() {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "pod") {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "controller") {
 		BeforeAll(func() {
-			Skip("image_cve_local suite is not supported with EXEC_MODE=pod: local scanners are not available in patcher pod image")
+			Skip("image_cve_local suite is not supported with EXEC_MODE=controller: local scanners are not available in patcher pod image")
 		})
 	}
 

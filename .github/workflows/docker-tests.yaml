@@ -14,7 +14,7 @@ jobs:
   unit-tests:
     name: Go Unit Tests (internal)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,6 +27,14 @@ jobs:
       - name: Run unit tests
         run: |
           go test -v ./internal/...
+
+      - name: Download envtest assets (kube-apiserver, etcd)
+        run: |
+          echo "KUBEBUILDER_ASSETS=$(go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2 use -p path)" >> "$GITHUB_ENV"
+
+      - name: Run envtest (controller against a real kube-apiserver)
+        run: |
+          go test -race -run TestEnvtest -v ./internal/controller/
   docker-scenarios:
     name: RKE2 docker scenarios (${{ matrix.exec_mode }}, ${{ matrix.scenario }})
     runs-on: ubuntu-24.04
@@ -36,7 +44,7 @@ jobs:
       matrix:
         exec_mode:
           - binary
-          - pod
+          - controller
         scenario:
           - image_cve
           - image_list
@@ -52,12 +60,20 @@ jobs:
           - airgap
           - multi_patcher_reconcile
           - patch_reconcile_component_ha
+          - cli_controller_migration
+          - auto_revert_upgrade
         exclude:
-          - exec_mode: pod
+          # Deploys the controller itself and runs the CLI on the node
+          - exec_mode: controller
+            scenario: cli_controller_migration
+          # Needs the ImagePatch controller
+          - exec_mode: binary
+            scenario: auto_revert_upgrade
+          - exec_mode: controller
             scenario: image_cve_local
-          - exec_mode: pod
+          - exec_mode: controller
             scenario: registry_custom_ca
-          - exec_mode: pod
+          - exec_mode: controller
             scenario: airgap
     steps:
       - name: Checkout
