@@ -63,6 +63,7 @@ func TestMergeIntoEmptyKeepsDeepNesting(t *testing.T) {
 		{"rke2-canal-flannel", "rke2-canal"},
 		{"rke2-canal-calico", "rke2-canal"},
 		{"rke2-ingress-nginx", "rke2-ingress-nginx"},
+		{"rke2-snapshot-controller", "rke2-snapshot-controller"},
 	} {
 		generated, generatedValues := BuildHelmChartConfig(component.name, component.chart, "rancher/some-image", "v1.2.3-build20260101")
 		merged, err := MergeHelmChartConfigWithContent(generated, "")
@@ -87,5 +88,40 @@ func TestMergeIntoEmptyKeepsDeepNesting(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s: merging into empty did not preserve nesting:\n got=%#v\nwant=%#v\nmerged=\n%s", component.name, got, want, merged)
 		}
+	}
+}
+
+// rke2-snapshot-controller's patch used to be written to a top-level image.repository/tag,
+// which the chart does not read (it reads controller.image.*); the component's pods kept
+// running the bundled tag even though image-patch reported success.
+func TestSnapshotControllerWritesControllerImageNotTopLevelImage(t *testing.T) {
+	generated, _ := BuildHelmChartConfig("rke2-snapshot-controller", "rke2-snapshot-controller", "rancher/hardened-snapshot-controller", "v8.5.0-build20260410")
+
+	hcc, err := parseSingleHelmChartConfig(generated)
+	if err != nil {
+		t.Fatalf("failed to parse generated HelmChartConfig: %v", err)
+	}
+	var values map[string]any
+	if err := yaml.Unmarshal([]byte(hcc.Spec.ValuesContent), &values); err != nil {
+		t.Fatalf("failed to parse valuesContent: %v", err)
+	}
+
+	if _, found := values["image"]; found {
+		t.Fatalf("patch wrote a top-level image key, which the chart ignores:\n%s", generated)
+	}
+
+	controller, ok := values["controller"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected a controller key, got:\n%s", generated)
+	}
+	image, ok := controller["image"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected controller.image, got:\n%s", generated)
+	}
+	if image["repository"] != "rancher/hardened-snapshot-controller" {
+		t.Fatalf("controller.image.repository = %v, want rancher/hardened-snapshot-controller", image["repository"])
+	}
+	if image["tag"] != "v8.5.0-build20260410" {
+		t.Fatalf("controller.image.tag = %v, want v8.5.0-build20260410", image["tag"])
 	}
 }

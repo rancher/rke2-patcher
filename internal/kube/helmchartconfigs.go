@@ -154,6 +154,16 @@ var ApplyHelmChartConfig = applyHelmChartConfigImpl
 // otherwise it is updated only if it still has that resourceVersion. Lost races surface as
 // Conflict/AlreadyExists errors (check with k8serrors.IsConflict / IsAlreadyExists).
 func applyHelmChartConfigImpl(yamlContent string, resourceVersion string) error {
+	dynamicClient, err := kubeDynamicClient()
+	if err != nil {
+		return err
+	}
+	return applyHelmChartConfigWithClient(dynamicClient, yamlContent, resourceVersion)
+}
+
+// applyHelmChartConfigWithClient is applyHelmChartConfigImpl with an injectable client, so the
+// Create/Update/conflict behavior can be exercised against a fake client in tests.
+func applyHelmChartConfigWithClient(dynamicClient dynamic.Interface, yamlContent string, resourceVersion string) error {
 	un := &unstructured.Unstructured{}
 	if err := syaml.Unmarshal([]byte(yamlContent), &un.Object); err != nil {
 		return fmt.Errorf("failed to unmarshal HelmChartConfig YAML: %w", err)
@@ -165,15 +175,10 @@ func applyHelmChartConfigImpl(yamlContent string, resourceVersion string) error 
 		namespace = "kube-system"
 	}
 
-	dynamicClient, err := kubeDynamicClient()
-	if err != nil {
-		return err
-	}
-
 	resource := dynamicClient.Resource(gvr).Namespace(namespace)
 
 	if strings.TrimSpace(resourceVersion) == "" {
-		_, err = resource.Create(context.Background(), un, metav1.CreateOptions{})
+		_, err := resource.Create(context.Background(), un, metav1.CreateOptions{})
 		if k8serrors.IsAlreadyExists(err) {
 			return fmt.Errorf("HelmChartConfig %s/%s was created concurrently; re-run to merge with it: %w", namespace, un.GetName(), err)
 		}
@@ -181,7 +186,7 @@ func applyHelmChartConfigImpl(yamlContent string, resourceVersion string) error 
 	}
 
 	un.SetResourceVersion(resourceVersion)
-	_, err = resource.Update(context.Background(), un, metav1.UpdateOptions{})
+	_, err := resource.Update(context.Background(), un, metav1.UpdateOptions{})
 	if k8serrors.IsConflict(err) {
 		return fmt.Errorf("HelmChartConfig %s/%s was modified concurrently; re-run to merge with the latest version: %w", namespace, un.GetName(), err)
 	}

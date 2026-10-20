@@ -174,6 +174,52 @@ spec:
 	}
 }
 
+// Several components share a chart (rke2-canal-calico and rke2-canal-flannel both patch
+// rke2-canal; rke2-dns-node-cache and rke2-coredns-cluster-autoscaler both patch
+// rke2-coredns): reconcileEntry must look up the shared chart's name, not the component's own
+// name, or it silently reconciles nothing.
+func TestReconcileEntry_ResolvesSharedChartName(t *testing.T) {
+	originalGet := kube.GetHelmChartConfigByIdentity
+	originalApply := kube.ApplyHelmChartConfig
+	t.Cleanup(func() {
+		kube.GetHelmChartConfigByIdentity = originalGet
+		kube.ApplyHelmChartConfig = originalApply
+	})
+
+	cases := []struct {
+		component        string
+		wantResourceName string
+		generatedValues  string
+	}{
+		{"rke2-canal-calico", "rke2-canal", "calico:\n  cniImage:\n    tag: v1"},
+		{"rke2-canal-flannel", "rke2-canal", "flannel:\n  image:\n    tag: v1"},
+		{"rke2-dns-node-cache", "rke2-coredns", "nodelocal:\n  image:\n    tag: v1"},
+		{"rke2-coredns-cluster-autoscaler", "rke2-coredns", "autoscaler:\n  image:\n    tag: v1"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.component, func(t *testing.T) {
+			var requestedName string
+			kube.GetHelmChartConfigByIdentity = func(name, namespace string) (*kube.HelmChartConfigObject, error) {
+				requestedName = name
+				return nil, nil // "nothing to reconcile" is enough; we only assert the lookup name
+			}
+			kube.ApplyHelmChartConfig = func(string, string) error {
+				t.Fatal("ApplyHelmChartConfig should not be called when GetHelmChartConfigByIdentity finds nothing")
+				return nil
+			}
+
+			entry := patchEntry{Component: tc.component, GeneratedValuesContent: tc.generatedValues}
+			if _, err := reconcileEntry(entry); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if requestedName != tc.wantResourceName {
+				t.Fatalf("reconcileEntry(%q) looked up HelmChartConfig %q, want %q", tc.component, requestedName, tc.wantResourceName)
+			}
+		})
+	}
+}
+
 func TestReconcileEntry_NoOpWhenFileDoesNotExist(t *testing.T) {
 
 	entry := patchEntry{
