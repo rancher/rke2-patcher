@@ -45,7 +45,7 @@ jobs:
           secret/data/github/repo/${{ github.repository }}/rancher-prime-registry/credentials password | PRIME_REGISTRY_PASSWORD ;
 
     - name: Build and push container image
-      uses: rancher/ecm-distro-tools/actions/publish-image@290d2621a24dab79c3c54c57965d4257cb1ee2b8 # v0.77.5
+      uses: rancher/ecm-distro-tools/actions/publish-image@de2813d6e83420b8146ce1f57de5ac6aad28c985 # v0.78.0
       with:
         image: rke2-patcher
         tag: ${{ github.event.release.tag_name || env.TAG }}
