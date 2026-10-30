@@ -4,5 +4,5 @@ github:
   username: "UPDATECLI_GITHUB_ACTOR"
   token: "UPDATECLI_GITHUB_TOKEN"
   owner: "rancher"
-  repository: "rancher-rke2-patcher"
+  repository: "rke2-patcher"
   branch: "main"
