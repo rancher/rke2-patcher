@@ -8,7 +8,6 @@ sources:
     spec:
       owner: aquasecurity
       repository: trivy
-      token: '{{ requiredEnv .github.token }}'
       typefilter:
         release: true
         draft: false
