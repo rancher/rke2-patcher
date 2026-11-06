@@ -3,20 +3,13 @@ name: "Update Trivy version"
 
 sources:
   trivy:
-    name: "Latest Trivy minor release"
-    kind: githubrelease
+    name: "Latest Trivy release from Docker Registry"
+    kind: dockerimage
     spec:
-      owner: aquasecurity
-      repository: trivy
-      typefilter:
-        release: true
-        draft: false
-        prerelease: false
+      image: "aquasec/trivy"
       versionfilter:
         kind: semver
-        pattern: minor
-    transformers:
-      - trimprefix: "v"
+        pattern: "^0"
 
 targets:
   scannerImage:
@@ -47,7 +40,7 @@ targets:
     spec:
       file: tests/docker/testutils.go
       matchpattern: '(?m)(const TrivyVersion = ")[^"]+(")'
-      replacepattern: '$1{{ source "trivy" }}$2'
+      replacepattern: '${1}{{ source "trivy" }}${2}'
 
   readmeDefault:
     name: "Update the documented Trivy image default"
