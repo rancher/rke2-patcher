@@ -56,3 +56,23 @@ jobs:
         prime-registry: ${{ env.PRIME_REGISTRY }}
         prime-username: ${{ env.PRIME_REGISTRY_USERNAME }}
         prime-password: ${{ env.PRIME_REGISTRY_PASSWORD }}
+
+    # ====================================================================
+    # PUSH THE CHART
+    # ====================================================================
+
+    - name: Pull chart build scripts
+      run: ./scripts/pull-scripts
+
+    - name: Package chart
+      run: |
+        ./scripts/package-chart
+        yq '{"rke2-patcher": [.version]}' charts/rke2-patcher/Chart.yaml > release.yaml
+
+    - name: Push To Prime
+      env:
+        OCI_DNS: ${{ env.PRIME_REGISTRY }}
+        OCI_USER: ${{ env.PRIME_REGISTRY_USERNAME }}
+        OCI_PASS: ${{ env.PRIME_REGISTRY_PASSWORD }}
+        LOG: "INFO"
+      run: ./bin/charts-build-scripts update-oci-registry

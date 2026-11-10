@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+source ./version
+
+echo "Pulling in charts-build-scripts version ${CHARTS_BUILD_SCRIPT_VERSION}"
+
+rm -rf ../bin
+cd ..
+
+rm -rf charts-build-scripts
+git init charts-build-scripts
+git -C charts-build-scripts remote add origin https://github.com/rancher/charts-build-scripts.git
+git -C charts-build-scripts fetch --depth 1 origin "${CHARTS_BUILD_SCRIPT_COMMIT}" "refs/tags/${CHARTS_BUILD_SCRIPT_VERSION}:refs/tags/${CHARTS_BUILD_SCRIPT_VERSION}"
+
+if [[ "$(git -C charts-build-scripts rev-parse "refs/tags/${CHARTS_BUILD_SCRIPT_VERSION}^{commit}")" != "${CHARTS_BUILD_SCRIPT_COMMIT}" ]]; then
+	echo "charts-build-scripts ${CHARTS_BUILD_SCRIPT_VERSION} does not match pinned commit ${CHARTS_BUILD_SCRIPT_COMMIT}" >&2
+	exit 1
+fi
+
+git -C charts-build-scripts checkout --detach "${CHARTS_BUILD_SCRIPT_COMMIT}"
+mkdir bin
+
+cd charts-build-scripts
+go build -ldflags "-X main.Version=${CHARTS_BUILD_SCRIPT_VERSION} -X main.GitCommit=$(git rev-parse --short HEAD)" -o charts-build-scripts .
+mv charts-build-scripts ../bin/charts-build-scripts
+cd ..
+rm -rf charts-build-scripts
+chmod +x bin/charts-build-scripts
+./bin/charts-build-scripts --version
