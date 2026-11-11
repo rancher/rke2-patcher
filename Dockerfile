@@ -5,7 +5,7 @@ WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags "-X github.com/rancher/rke2-patcher/internal/version.Version=${VERSION}" -o /rke2-patcher .
 
-FROM registry.suse.com/bci/bci-busybox:16.0
+FROM registry.suse.com/bci/bci-busybox:16.1
 COPY --from=builder /rke2-patcher /usr/local/bin/rke2-patcher
 ENTRYPOINT ["rke2-patcher"]
 CMD ["controller"]
