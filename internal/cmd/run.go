@@ -196,7 +196,7 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 	runningImage := runningImages[0].Image
 	currentImageName, currentImageTag := kube.SplitImage(runningImage)
 
-	targetTagName, err := resolvePatchTargetTagForTarget(component.Repository, currentImageTag, options.TargetTag)
+	targetTagName, err := resolvePatchTargetTagForTarget(component.Name, component.Repository, currentImageTag, options.TargetTag)
 	if err != nil {
 		return err
 	}

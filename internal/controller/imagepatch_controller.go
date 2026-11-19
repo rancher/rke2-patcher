@@ -301,7 +301,7 @@ func (r *Reconciler) reconcilePatch(ctx context.Context, imgPatch *v1alpha1.Imag
 	// Already applied: only re-check the rules that can change without a new spec, i.e. the
 	// bundled tag moving past spec.tag
 	if current.managed() && present {
-		if err := policy.ValidateAgainstBaseline(baseline, imgPatch.Spec.Tag); err != nil {
+		if err := policy.ValidateAgainstBaseline(component.Name, baseline, imgPatch.Spec.Tag); err != nil {
 			if revertErr := r.revert(component, current); revertErr != nil {
 				return outcome{}, revertErr
 			}
@@ -347,7 +347,7 @@ func (r *Reconciler) reconcilePatch(ctx context.Context, imgPatch *v1alpha1.Imag
 	if err != nil {
 		return outcome{}, err
 	}
-	if err := policy.ValidateExplicitTarget(baseline, imgPatch.Spec.Tag, tags); err != nil {
+	if err := policy.ValidateExplicitTarget(component.Name, baseline, imgPatch.Spec.Tag, tags); err != nil {
 		return violationOutcome(err)
 	}
 	if !policy.IsPatchWindowExempt(component.Name) {

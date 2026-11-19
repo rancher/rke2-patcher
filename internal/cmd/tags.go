@@ -65,11 +65,11 @@ func selectTagsForCVEListing(tags []registry.Tag, currentTag string) ([]string, 
 }
 
 // resolvePatchTargetTag finds the target tag to patch to after going through the different limitations checks (mainly, new minor)
-func resolvePatchTargetTag(repository string, currentTag string) (string, error) {
-	return resolvePatchTargetTagForTarget(repository, currentTag, "")
+func resolvePatchTargetTag(componentName string, repository string, currentTag string) (string, error) {
+	return resolvePatchTargetTagForTarget(componentName, repository, currentTag, "")
 }
 
-func resolvePatchTargetTagForTarget(repository string, currentTag string, requestedTarget string) (string, error) {
+func resolvePatchTargetTagForTarget(componentName string, repository string, currentTag string, requestedTarget string) (string, error) {
 	tags, err := registry.ListTags(repository, 200)
 	if err != nil {
 		return "", fmt.Errorf("failed to list tags: %w", err)
@@ -126,10 +126,17 @@ func resolvePatchTargetTagForTarget(repository string, currentTag string, reques
 		return "", fmt.Errorf("refusing to patch: target tag %q cannot be compared for minor compatibility", targetTag)
 	}
 
-	if isNewerMinorRelease(currentComparable, targetComparable) {
+	if targetComparable.Major != currentComparable.Major {
+		return "", fmt.Errorf("refusing to patch: changing to a different major release is not supported (current: %q, target: %q)", currentTag, targetTag)
+	}
+	if targetComparable.Minor < currentComparable.Minor {
+		return "", fmt.Errorf("refusing to patch: target tag must be on the same major/minor release line (current: %q, target: %q)", currentTag, targetTag)
+	}
+	if isNewerMinorRelease(currentComparable, targetComparable) && !policy.IsMinorVersionChangeExempt(componentName) {
 		return "", fmt.Errorf("refusing to patch: moving to a newer minor release is not supported (current: %q, target: %q)", currentTag, targetTag)
 	}
-	if requestedTarget != "" && (targetComparable.Major != currentComparable.Major || targetComparable.Minor != currentComparable.Minor) {
+	if requestedTarget != "" && targetComparable.Minor != currentComparable.Minor &&
+		!(targetComparable.Minor > currentComparable.Minor && policy.IsMinorVersionChangeExempt(componentName)) {
 		return "", fmt.Errorf("refusing to patch: requested target tag must be on the same major/minor release line (current: %q, target: %q)", currentTag, targetTag)
 	}
 

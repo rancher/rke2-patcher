@@ -161,14 +161,14 @@ rke2-patcher image-patch rke2-traefik --yes
 ```
 
 - Detects the current running image repository in-cluster.
-- By default, picks the next newer tag from `registry.rancher.com`. With `--tag`, selects that exact registry tag instead. Explicit tags must be newer than the running tag and remain on the same minor release line.
+- By default, picks the next newer tag from `registry.rancher.com`. With `--tag`, selects that exact registry tag instead. Explicit tags must be newer than the running tag and remain on the same minor release line, except `rke2-ingress-nginx` may move to a newer minor. Major-version changes remain blocked.
 - Applies a `HelmChartConfig` object with the selected tag via the Kubernetes API.
 - Enforces a 45-day patch window relative to the cluster "zero-day" date, derived from the running kube-apiserver image tag (`rancher/hardened-kubernetes`) build date.
 - If a candidate target tag is outside that 45-day window, patching is refused and the user is instructed to upgrade RKE2 first.
 - `rke2-ingress-nginx` is exempt from this date-window check.
 - With `--dry-run`, prints the exact `HelmChartConfig` that would be applied and does not update cluster state.
 - Refuses to patch when current tag is already the newest available tag.
-- Refuses to patch when the target tag would move to a newer minor release.
+- Refuses to patch when the target tag would move to a newer minor release, except for `rke2-ingress-nginx`. Major-version changes remain blocked for all components.
 - Refuses to patch when any stale patch state from a different RKE2 version still exists. In that case, run `rke2-patcher image-reconcile <component>` for each previously patched component before patching again.
 - If one or more `HelmChartConfig` objects already exist in the cluster for the same chart name and namespace, asks for confirmation before attempting a merge.
 - If merge is approved, prints the merged output in dry-run format and asks for a second confirmation before writing.
@@ -321,7 +321,7 @@ spec:
 kubectl get imagepatches      # TAG, APPLIED, BASELINE, READY, REASON
 ```
 
-- The same guardrails as `image-patch` apply: Prime only, tag newer than the bundled tag, same minor release line, 45-day patch window (`rke2-ingress-nginx` exempt), and no patches while stale patches from a previous RKE2 version exist. Violations show up as a `Blocked` condition with a reason (`OutsidePatchWindow`, `MinorVersionChange`, `TagNotFound`, `NotNewer`, `NotPrime`, `StalePatchesExist`, `ConflictingOverride`, `CLIPatchesExist`, `ChartLayoutMismatch`); nothing is written.
+- The same guardrails as `image-patch` apply: Prime only, tag newer than the bundled tag, same minor release line (except `rke2-ingress-nginx`, which may move to a newer minor), 45-day patch window (`rke2-ingress-nginx` exempt), and no patches while stale patches from a previous RKE2 version exist. Major-version changes remain blocked. Violations show up as a `Blocked` condition with a reason (`OutsidePatchWindow`, `MinorVersionChange`, `TagNotFound`, `NotNewer`, `NotPrime`, `StalePatchesExist`, `ConflictingOverride`, `CLIPatchesExist`, `ChartLayoutMismatch`); nothing is written.
 - Values are merged into the existing `HelmChartConfig`. Only the specific repository/tag keys a component's patch generates are ever inspected or written; any other value, and any other field on the object (labels, `failurePolicy`, `valuesSecrets`, etc.), is left exactly as it is. If those keys already hold values set outside an ImagePatch (not carrying the ownership annotation below), the ImagePatch is `Blocked/ConflictingOverride` instead of overwriting them.
 - If those same keys are removed or edited by hand on a `HelmChartConfig` the ImagePatch owns, the controller puts `spec.tag` back (`DriftCorrected` event).
 - Setting `spec.tag` to the bundled tag reverts the patch but keeps the ImagePatch (`Ready/AtBaseline`).

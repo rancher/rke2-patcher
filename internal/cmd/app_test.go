@@ -344,7 +344,7 @@ func TestResolvePatchTargetTag_AllowsHardenedUpgrade(t *testing.T) {
 	})
 	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
 
-	targetTag, err := resolvePatchTargetTag(repository, "v1.14.5-hardened1")
+	targetTag, err := resolvePatchTargetTag("rke2-ingress-nginx", repository, "v1.14.5-hardened1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestResolvePatchTargetTag_AllowsPrimeUpgrade(t *testing.T) {
 	})
 	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
 
-	targetTag, err := resolvePatchTargetTag(repository, "v1.14.5-prime3")
+	targetTag, err := resolvePatchTargetTag("rke2-ingress-nginx", repository, "v1.14.5-prime3")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestResolvePatchTargetTag_RejectsNewerMinorUpgrade(t *testing.T) {
 	})
 	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
 
-	_, err := resolvePatchTargetTag(repository, "v1.14.1-build20260206")
+	_, err := resolvePatchTargetTag("rke2-traefik", repository, "v1.14.1-build20260206")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -398,7 +398,7 @@ func TestResolvePatchTargetTag_AllowsSameMinorUpgrade(t *testing.T) {
 	})
 	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
 
-	targetTag, err := resolvePatchTargetTag(repository, "v1.14.1-build20260206")
+	targetTag, err := resolvePatchTargetTag("rke2-traefik", repository, "v1.14.1-build20260206")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestResolvePatchTargetTagForTargetSelectsRequestedTag(t *testing.T) {
 	})
 	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
 
-	targetTag, err := resolvePatchTargetTagForTarget(repository, "v1.14.1-build20260206", "v1.14.3-build20260208")
+	targetTag, err := resolvePatchTargetTagForTarget("rke2-traefik", repository, "v1.14.1-build20260206", "v1.14.3-build20260208")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestResolvePatchTargetTagForTargetRejectsUnsafeTargets(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := resolvePatchTargetTagForTarget(repository, "v1.14.1-build20260206", testCase.target)
+			_, err := resolvePatchTargetTagForTarget("rke2-traefik", repository, "v1.14.1-build20260206", testCase.target)
 			if err == nil || !strings.Contains(err.Error(), testCase.errorMatch) {
 				t.Fatalf("expected error containing %q, got %v", testCase.errorMatch, err)
 			}
@@ -457,18 +457,74 @@ func TestResolvePatchTargetTagForTargetRejectsUnsafeTargets(t *testing.T) {
 }
 
 func TestResolvePatchTargetTagForTargetRejectsLowerReleaseLineWithNewerBuild(t *testing.T) {
-	for _, target := range []string{"v1.13.9-build20260511", "v0.14.9-build20260511"} {
-		t.Run(target, func(t *testing.T) {
+	testCases := []struct {
+		target     string
+		errorMatch string
+	}{
+		{target: "v1.13.9-build20260511", errorMatch: "same major/minor release line"},
+		{target: "v0.14.9-build20260511", errorMatch: "different major release"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.target, func(t *testing.T) {
 			repository := "rancher/hardened-traefik"
 			current := "v1.14.1-build20260510"
-			server := newTagsServer(t, repository, []string{current, target})
+			server := newTagsServer(t, repository, []string{current, testCase.target})
 			t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
 
-			got, err := resolvePatchTargetTagForTarget(repository, current, target)
-			if got != "" || err == nil || !strings.Contains(err.Error(), "same major/minor release line") {
+			got, err := resolvePatchTargetTagForTarget("rke2-traefik", repository, current, testCase.target)
+			if got != "" || err == nil || !strings.Contains(err.Error(), testCase.errorMatch) {
 				t.Fatalf("expected release-line rejection, got tag=%q error=%v", got, err)
 			}
 		})
+	}
+}
+
+func TestResolvePatchTargetTag_AllowsIngressNginxMinorUpgrade(t *testing.T) {
+	repository := "rancher/nginx-ingress-controller"
+	server := newTagsServer(t, repository, []string{
+		"v1.13.9-prime9",
+		"v1.14.5-prime3",
+		"v1.15.1-prime5",
+	})
+	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
+
+	targetTag, err := resolvePatchTargetTag("rke2-ingress-nginx", repository, "v1.14.5-prime3")
+	if err != nil {
+		t.Fatalf("automatic target selection refused newer minor: %v", err)
+	}
+	if targetTag != "v1.15.1-prime5" {
+		t.Fatalf("unexpected automatic target tag: %q", targetTag)
+	}
+
+	targetTag, err = resolvePatchTargetTagForTarget("rke2-ingress-nginx", repository, "v1.14.5-prime3", "v1.15.1-prime5")
+	if err != nil {
+		t.Fatalf("explicit newer minor target was refused: %v", err)
+	}
+	if targetTag != "v1.15.1-prime5" {
+		t.Fatalf("unexpected explicit target tag: %q", targetTag)
+	}
+
+	if _, err := resolvePatchTargetTagForTarget("rke2-ingress-nginx", repository, "v1.14.5-prime3", "v1.13.9-prime9"); err == nil ||
+		!strings.Contains(err.Error(), "older than current tag") {
+		t.Fatalf("expected older minor target to be rejected, got %v", err)
+	}
+}
+
+func TestResolvePatchTargetTag_RejectsIngressNginxLowerMinorWithNewerBuild(t *testing.T) {
+	repository := "rancher/nginx-ingress-controller"
+	current := "v1.15.1-prime3"
+	lowerMinor := "v1.14.9-build20261001"
+	server := newTagsServer(t, repository, []string{current, lowerMinor})
+	t.Setenv("RKE2_PATCHER_REGISTRY", server.URL)
+
+	if got, err := resolvePatchTargetTag("rke2-ingress-nginx", repository, current); err == nil ||
+		!strings.Contains(err.Error(), "same major/minor release line") {
+		t.Fatalf("expected automatic lower-minor target to be rejected, got tag=%q error=%v", got, err)
+	}
+
+	if got, err := resolvePatchTargetTagForTarget("rke2-ingress-nginx", repository, current, lowerMinor); err == nil ||
+		!strings.Contains(err.Error(), "same major/minor release line") {
+		t.Fatalf("expected explicit lower-minor target to be rejected, got tag=%q error=%v", got, err)
 	}
 }
 

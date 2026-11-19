@@ -38,6 +38,15 @@ func violation(reason string, format string, args ...any) *Violation {
 
 // IsPatchWindowExempt reports whether a component can be patched regardless of the patch window
 func IsPatchWindowExempt(componentName string) bool {
+	return isIngressNginx(componentName)
+}
+
+// IsMinorVersionChangeExempt reports whether a component can be patched to a newer minor release.
+func IsMinorVersionChangeExempt(componentName string) bool {
+	return isIngressNginx(componentName)
+}
+
+func isIngressNginx(componentName string) bool {
 	return strings.EqualFold(strings.TrimSpace(componentName), "rke2-ingress-nginx")
 }
 
@@ -67,8 +76,8 @@ func ValidatePatchWindow(componentName string, targetTag string, zeroDay time.Ti
 }
 
 // ValidateExplicitTarget checks a requested target tag against the baseline (bundled) tag:
-// it must be published, newer than the baseline and on the same major/minor release line.
-func ValidateExplicitTarget(baselineTag string, targetTag string, availableTags []string) error {
+// it must be published, newer than the baseline and on an allowed release line.
+func ValidateExplicitTarget(componentName string, baselineTag string, targetTag string, availableTags []string) error {
 	found := false
 	for _, name := range availableTags {
 		if name == targetTag {
@@ -80,7 +89,7 @@ func ValidateExplicitTarget(baselineTag string, targetTag string, availableTags 
 		return violation(ReasonTagNotFound, "refusing to patch: requested target tag %q was not found in latest observed tags", targetTag)
 	}
 
-	return ValidateAgainstBaseline(baselineTag, targetTag)
+	return ValidateAgainstBaseline(componentName, baselineTag, targetTag)
 }
 
 // ValidateNotOlderThanCurrent refuses moving back to a tag older than the one currently
@@ -98,9 +107,9 @@ func ValidateNotOlderThanCurrent(currentTag string, targetTag string) error {
 	return nil
 }
 
-// ValidateAgainstBaseline checks that a target tag is newer than the baseline (bundled) tag
-// and on the same major/minor release line
-func ValidateAgainstBaseline(baselineTag string, targetTag string) error {
+// ValidateAgainstBaseline checks that a target tag is newer than the baseline (bundled) tag.
+// Targets must remain on the same major release line; minor changes are component-specific.
+func ValidateAgainstBaseline(componentName string, baselineTag string, targetTag string) error {
 	baseline, ok := ParseTag(baselineTag)
 	if !ok {
 		return violation(ReasonUnparsableTag, "refusing to patch: current tag %q cannot be compared for minor compatibility", baselineTag)
@@ -113,7 +122,10 @@ func ValidateAgainstBaseline(baselineTag string, targetTag string) error {
 	if CompareTags(target, baseline) <= 0 {
 		return violation(ReasonNotNewer, "refusing to patch: requested target tag %q is not newer than the bundled tag %q", targetTag, baselineTag)
 	}
-	if target.Major != baseline.Major || target.Minor != baseline.Minor {
+	if target.Major != baseline.Major {
+		return violation(ReasonMinorVersionChange, "refusing to patch: changing to a different major release is not supported (current: %q, target: %q)", baselineTag, targetTag)
+	}
+	if target.Minor != baseline.Minor && !(target.Minor > baseline.Minor && IsMinorVersionChangeExempt(componentName)) {
 		return violation(ReasonMinorVersionChange, "refusing to patch: moving to a newer minor release is not supported; the target tag must be on the same major/minor release line (current: %q, target: %q)", baselineTag, targetTag)
 	}
 

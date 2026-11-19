@@ -28,10 +28,23 @@ func TestValidateExplicitTarget(t *testing.T) {
 		{target: "v3.4.0-build20260901", reason: ReasonMinorVersionChange},
 	}
 	for _, tc := range cases {
-		err := ValidateExplicitTarget("v3.3.4-build20260801", tc.target, available)
+		err := ValidateExplicitTarget("rke2-traefik", "v3.3.4-build20260801", tc.target, available)
 		if got := reasonOf(err); got != tc.reason {
 			t.Errorf("target %s: reason %q (err %v), want %q", tc.target, got, err, tc.reason)
 		}
+	}
+}
+
+func TestIngressNginxCanMoveToNewerMinorButNotMajor(t *testing.T) {
+	available := []string{"v1.13.9-build20261001", "v1.15.1-prime5", "v2.0.0-prime1"}
+	if err := ValidateExplicitTarget("rke2-ingress-nginx", "v1.14.5-prime3", "v1.15.1-prime5", available); err != nil {
+		t.Fatalf("ingress-nginx newer minor tag was refused: %v", err)
+	}
+	if reason := reasonOf(ValidateExplicitTarget("rke2-ingress-nginx", "v1.14.5-prime3", "v1.13.9-build20261001", available)); reason != ReasonMinorVersionChange {
+		t.Fatalf("older minor version with newer build: reason %q, want %q", reason, ReasonMinorVersionChange)
+	}
+	if reason := reasonOf(ValidateExplicitTarget("rke2-ingress-nginx", "v1.14.5-prime3", "v2.0.0-prime1", available)); reason != ReasonMinorVersionChange {
+		t.Fatalf("major version change: reason %q, want %q", reason, ReasonMinorVersionChange)
 	}
 }
 
@@ -58,7 +71,7 @@ func TestOrderTagsNewestFirstAndFiltersSignatures(t *testing.T) {
 
 // The controller reuses the CLI's wording so scenarios can assert the same message in both modes
 func TestMinorVersionChangeUsesCLIWording(t *testing.T) {
-	err := ValidateAgainstBaseline("v8.4.0-build20260205", "v8.5.0-build20260410")
+	err := ValidateAgainstBaseline("rke2-traefik", "v8.4.0-build20260205", "v8.5.0-build20260410")
 	if err == nil || !strings.Contains(err.Error(), "refusing to patch: moving to a newer minor release is not supported") {
 		t.Fatalf("unexpected message: %v", err)
 	}

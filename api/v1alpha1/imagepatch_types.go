@@ -45,8 +45,8 @@ type ImagePatchSpec struct {
 	Component string `json:"component"`
 
 	// Tag is the exact image tag to run. It must be newer than the bundled tag, on the same
-	// minor release line and inside the 45-day patch window. Setting it to the bundled tag
-	// reverts the patch while keeping the ImagePatch.
+	// minor release line (except rke2-ingress-nginx) and inside the 45-day patch window.
+	// Setting it to the bundled tag reverts the patch while keeping the ImagePatch.
 	// +kubebuilder:validation:Pattern=`^v[0-9]+\.[0-9]+\.[0-9]+.*$`
 	Tag string `json:"tag"`
 
