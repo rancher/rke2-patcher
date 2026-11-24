@@ -23,6 +23,9 @@ spec:
       {{- with .Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.volumes }}
+      volumes: {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: rke2-patcher
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -30,6 +33,9 @@ spec:
           resources: {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.env }}
           env: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts: {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- if .Values.controller.enabled }}
           # The CLI can still be run in this container with `kubectl exec`

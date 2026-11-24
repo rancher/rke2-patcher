@@ -48,7 +48,7 @@ help:
 	@echo "  make test-docker-image_cve_local EXEC_MODE=binary"
 	@echo "  make test-docker-merging_values EXEC_MODE=binary|controller"
 	@echo "  make test-docker-helmchartconfig_metadata_sanitization EXEC_MODE=binary|controller"
-	@echo "  make test-docker-registry_custom_ca EXEC_MODE=binary"
+	@echo "  make test-docker-registry_custom_ca EXEC_MODE=binary|controller"
 	@echo "  make test-docker-reconcile_upgrade EXEC_MODE=binary|controller"
 	@echo "  make test-docker-multi_patcher_reconcile EXEC_MODE=binary|controller"
 	@echo "  make test-docker-patch_reconcile_component_ha EXEC_MODE=binary|controller"

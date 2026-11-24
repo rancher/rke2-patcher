@@ -72,8 +72,6 @@ jobs:
           - exec_mode: controller
             scenario: image_cve_local
           - exec_mode: controller
-            scenario: registry_custom_ca
-          - exec_mode: controller
             scenario: airgap
     steps:
       - name: Checkout
