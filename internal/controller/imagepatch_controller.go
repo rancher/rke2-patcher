@@ -40,6 +40,14 @@ const (
 
 	rolloutRequeue = 15 * time.Second
 	steadyRequeue  = 10 * time.Minute
+
+	// readyGracePeriod is how long Ready may be continuously False before a reconcile error is
+	// reported as Error instead of the softer Reconciling. Kubernetes is a continuously
+	// reconciling system; brief failures (an API hiccup, a pod mid-restart) are expected and
+	// usually resolve within seconds, so surfacing every one as Error - which also logs a
+	// reconciler error and increments the controller's error metric - would alarm anyone
+	// watching for real, persistent problems.
+	readyGracePeriod = 2 * time.Minute
 )
 
 // Operations are the cluster and registry interactions the reconciler needs. They are
@@ -160,7 +168,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	} else {
 		result, reconcileErr = r.reconcilePatch(ctx, &imgPatch, component)
 		if reconcileErr != nil {
-			result = outcome{reason: "Error", message: reconcileErr.Error()}
+			result, reconcileErr = r.reconcileErrorOutcome(ctx, previous, reconcileErr)
 		}
 	}
 
@@ -176,6 +184,46 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	return ctrl.Result{RequeueAfter: result.requeue}, nil
+}
+
+// runningImagesUnavailableError marks an error as coming from RunningImages, the one read this
+// controller expects to flap briefly on its own as pods restart. It exists so
+// reconcileErrorOutcome can give it a grace period without doing the same for every other
+// reconcilePatch error (a bad RBAC setup, a registry outage, a failed write): those do not
+// self-resolve the way "what's currently running" briefly not having an answer does, and
+// delaying their Error status would hide a genuine, persistent problem instead of a flap.
+type runningImagesUnavailableError struct{ err error }
+
+func (e *runningImagesUnavailableError) Error() string { return e.err.Error() }
+func (e *runningImagesUnavailableError) Unwrap() error { return e.err }
+
+// reconcileErrorOutcome decides how to report a reconcilePatch error. Only a
+// runningImagesUnavailableError is eligible for a grace period at all; every other error is
+// reported as Error immediately, exactly as before this existed. For an eligible error, within
+// readyGracePeriod of Ready first going False it reports Reconciling and requeues quickly
+// instead of propagating the error: no Error condition, no reconciler-error log line, no
+// error-metric increment. Past the grace period, the same failure is reported as the real Error
+// it has become.
+//
+// previous is the status as of the start of this reconcile (before reconcilePatch ran), so its
+// Ready condition's LastTransitionTime reflects how long it has been continuously False.
+func (r *Reconciler) reconcileErrorOutcome(ctx context.Context, previous *v1alpha1.ImagePatchStatus, reconcileErr error) (outcome, error) {
+	var transient *runningImagesUnavailableError
+	if !errors.As(reconcileErr, &transient) {
+		return outcome{reason: "Error", message: reconcileErr.Error()}, reconcileErr
+	}
+
+	withinGrace := true
+	if previousReady := meta.FindStatusCondition(previous.Conditions, v1alpha1.ConditionReady); previousReady != nil && previousReady.Status == metav1.ConditionFalse {
+		withinGrace = time.Since(previousReady.LastTransitionTime.Time) < readyGracePeriod
+	}
+
+	if withinGrace {
+		logf.FromContext(ctx).Info("reconcile error within grace period, retrying quietly", "error", reconcileErr.Error())
+		return outcome{reason: "Reconciling", message: reconcileErr.Error(), requeue: rolloutRequeue}, nil
+	}
+
+	return outcome{reason: "Error", message: reconcileErr.Error()}, reconcileErr
 }
 
 // reconcilePatch drives the component towards spec.tag
@@ -273,7 +321,7 @@ func (r *Reconciler) reconcilePatch(ctx context.Context, imgPatch *v1alpha1.Imag
 
 	images, err := r.Ops.RunningImages(component)
 	if err != nil {
-		return outcome{}, fmt.Errorf("running image unavailable: %w", err)
+		return outcome{}, &runningImagesUnavailableError{fmt.Errorf("running image unavailable: %w", err)}
 	}
 	imgPatch.Status.RunningImages = imageNames(images)
 
@@ -405,7 +453,7 @@ func (r *Reconciler) reconcilePatch(ctx context.Context, imgPatch *v1alpha1.Imag
 func (r *Reconciler) revertedOutcome(imgPatch *v1alpha1.ImagePatch, component components.Component, clusterVersion string, baseline string, appliedMessage string) (outcome, error) {
 	images, err := r.Ops.RunningImages(component)
 	if err != nil {
-		return outcome{}, fmt.Errorf("running image unavailable: %w", err)
+		return outcome{}, &runningImagesUnavailableError{fmt.Errorf("running image unavailable: %w", err)}
 	}
 	imgPatch.Status.RunningImages = imageNames(images)
 	imgPatch.Status.AppliedTag = ""

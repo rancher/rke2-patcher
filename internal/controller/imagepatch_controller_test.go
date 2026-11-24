@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -44,10 +45,16 @@ type fakeCluster struct {
 	version string
 	prime   bool
 	images  []string
-	zeroDay time.Time
-	tags    []string
-	charts  map[string]string // chart name -> bundled values.yaml
-	cli     clistate.State
+	// runningImagesErr, if set, makes RunningImages fail instead of returning images, e.g. to
+	// simulate a rollout in progress or any other transient read error.
+	runningImagesErr error
+	// primeEnabledErr, if set, makes PrimeEnabled fail, e.g. to simulate an RBAC/cluster-read
+	// problem unrelated to RunningImages.
+	primeEnabledErr error
+	zeroDay         time.Time
+	tags            []string
+	charts          map[string]string // chart name -> bundled values.yaml
+	cli             clistate.State
 
 	hcc   map[string]*kube.HelmChartConfigObject
 	hccRV int
@@ -74,8 +81,16 @@ func newFakeCluster() *fakeCluster {
 func (f *fakeCluster) ops() Operations {
 	return Operations{
 		ClusterVersion: func() (string, error) { return f.version, nil },
-		PrimeEnabled:   func(string) (bool, error) { return f.prime, nil },
+		PrimeEnabled: func(string) (bool, error) {
+			if f.primeEnabledErr != nil {
+				return false, f.primeEnabledErr
+			}
+			return f.prime, nil
+		},
 		RunningImages: func(components.Component) ([]kube.PodImageSummary, error) {
+			if f.runningImagesErr != nil {
+				return nil, f.runningImagesErr
+			}
 			summaries := make([]kube.PodImageSummary, 0, len(f.images))
 			for _, image := range f.images {
 				summaries = append(summaries, kube.PodImageSummary{Image: image, Count: 1})
@@ -438,6 +453,89 @@ func TestTagEqualToBaselineRevertsPatch(t *testing.T) {
 	imgPatch = h.get("rke2-traefik")
 	requireCondition(t, imgPatch, v1alpha1.ConditionReady, metav1.ConditionTrue, "AtBaseline")
 	requireCondition(t, imgPatch, v1alpha1.ConditionRolledOut, metav1.ConditionTrue, "RolledOut")
+}
+
+// backdateReadyCondition rewrites the Ready condition's LastTransitionTime, simulating "this
+// has been failing for a while" without actually waiting.
+func (h *harness) backdateReadyCondition(name string, age time.Duration) {
+	h.t.Helper()
+	imgPatch := h.get(name)
+	condition := meta.FindStatusCondition(imgPatch.Status.Conditions, v1alpha1.ConditionReady)
+	if condition == nil {
+		h.t.Fatalf("ImagePatch %s has no Ready condition yet", name)
+	}
+	condition.LastTransitionTime = metav1.NewTime(time.Now().Add(-age))
+	if err := h.client.Status().Update(context.Background(), imgPatch); err != nil {
+		h.t.Fatalf("backdate Ready condition: %v", err)
+	}
+}
+
+// A pod briefly has no Running replica of the patched workload during a normal rollout (the
+// old pod terminated, the new one has not started yet): RunningImages errors. Within
+// readyGracePeriod of Ready first going False, that must surface as Ready=False/Reconciling,
+// not as a hard reconcile error (Ready=False/Error), which would look like a real failure to
+// anyone alerting on it - and must not itself return an error from Reconcile (no reconciler
+// error log, no error-metric increment).
+func TestRunningImagesErrorWithinGracePeriodIsNotAnError(t *testing.T) {
+	h := newHarness(t, imagePatch("rke2-traefik", targetTag))
+	h.cluster.runningImagesErr = errors.New("no running image found for repository (checked: kube-system/app=rke2-traefik)")
+
+	result, err := h.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "rke2-traefik"}})
+	if err != nil {
+		t.Fatalf("Reconcile returned an error within the grace period: %v", err)
+	}
+	if result.RequeueAfter != rolloutRequeue {
+		t.Fatalf("requeue = %v, want the rollout requeue interval %v", result.RequeueAfter, rolloutRequeue)
+	}
+
+	imgPatch := h.get("rke2-traefik")
+	requireCondition(t, imgPatch, v1alpha1.ConditionReady, metav1.ConditionFalse, "Reconciling")
+
+	// Once a pod is actually Running again, the patch proceeds normally
+	h.cluster.runningImagesErr = nil
+	h.cluster.images = []string{traefikImage + ":" + targetTag}
+	h.reconcile("rke2-traefik")
+	imgPatch = h.get("rke2-traefik")
+	requireCondition(t, imgPatch, v1alpha1.ConditionReady, metav1.ConditionTrue, "Patched")
+	requireCondition(t, imgPatch, v1alpha1.ConditionRolledOut, metav1.ConditionTrue, "RolledOut")
+}
+
+// The same failure, once it has been continuously happening for longer than readyGracePeriod,
+// is reported as the real Error it has become, and Reconcile returns the error (so it still
+// logs and still increments the reconcile-error metric for anyone watching sustained failures).
+func TestRunningImagesErrorPastGracePeriodIsAnError(t *testing.T) {
+	h := newHarness(t, imagePatch("rke2-traefik", targetTag))
+	h.cluster.runningImagesErr = errors.New("no running image found for repository (checked: kube-system/app=rke2-traefik)")
+
+	if _, err := h.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "rke2-traefik"}}); err != nil {
+		t.Fatalf("Reconcile returned an error within the grace period: %v", err)
+	}
+	requireCondition(t, h.get("rke2-traefik"), v1alpha1.ConditionReady, metav1.ConditionFalse, "Reconciling")
+
+	h.backdateReadyCondition("rke2-traefik", readyGracePeriod+time.Minute)
+
+	_, err := h.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "rke2-traefik"}})
+	if err == nil {
+		t.Fatal("expected Reconcile to return an error past the grace period")
+	}
+
+	requireCondition(t, h.get("rke2-traefik"), v1alpha1.ConditionReady, metav1.ConditionFalse, "Error")
+}
+
+// A failure that has nothing to do with RunningImages - a bad RBAC setup, a registry outage, a
+// failed write - does not self-resolve the way a pod restart does. It must be reported as
+// Error immediately, on the very first occurrence, never softened to Reconciling regardless of
+// how long Ready has been False.
+func TestNonRunningImagesErrorIsNeverSoftened(t *testing.T) {
+	h := newHarness(t, imagePatch("rke2-traefik", targetTag))
+	h.cluster.primeEnabledErr = errors.New("failed to list HelmCharts: RBAC forbidden")
+
+	_, err := h.r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "rke2-traefik"}})
+	if err == nil {
+		t.Fatal("expected Reconcile to return an error immediately, not give it a grace period")
+	}
+
+	requireCondition(t, h.get("rke2-traefik"), v1alpha1.ConditionReady, metav1.ConditionFalse, "Error")
 }
 
 func TestManualOverrideBlocksPatch(t *testing.T) {
