@@ -24,6 +24,14 @@ import (
 const (
 	hostBridgeRegistryIP = "172.17.0.1"
 	remoteRegistryCAPath = "/root/rke2-patcher-registry-ca.pem"
+
+	// Controller mode only: the controller runs in its own pod, so docker cp (used above to
+	// stage the CA on the node for binary mode) cannot reach it. mountRegistryCAIntoControllerPod
+	// instead mounts it from a Secret.
+	controllerPatcherNamespace     = "rke2-patcher"
+	controllerRegistryCASecretName = "rke2-patcher-registry-ca"
+	controllerRegistryCAMountDir   = "/etc/rke2-patcher/registry-ca"
+	controllerRegistryCAMountPath  = controllerRegistryCAMountDir + "/ca.crt"
 )
 
 var (
@@ -33,6 +41,7 @@ var (
 
 	tc             *docker.TestConfig
 	tlsRegistryURL string
+	registryCAPath string
 )
 
 func Test_DockerRegistryCustomCA(t *testing.T) {
@@ -42,12 +51,6 @@ func Test_DockerRegistryCustomCA(t *testing.T) {
 }
 
 var _ = Describe("Registry custom CA support", Ordered, func() {
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "controller") {
-		BeforeAll(func() {
-			Skip("registry custom CA suite is not supported with EXEC_MODE=controller")
-		})
-	}
-
 	Context("Setup", func() {
 		It("provisions an RKE2 server", func() {
 			var err error
@@ -88,6 +91,14 @@ var _ = Describe("Registry custom CA support", Ordered, func() {
 			if out, copyErr := docker.RunCommand(copyCmd); copyErr != nil {
 				Fail(fmt.Sprintf("failed to copy CA file into server: %s: %v", out, copyErr))
 			}
+
+			if strings.EqualFold(strings.TrimSpace(os.Getenv("EXEC_MODE")), "controller") {
+				mountedPath, mountErr := mountRegistryCAIntoControllerPod(tc)
+				Expect(mountErr).NotTo(HaveOccurred())
+				registryCAPath = mountedPath
+			} else {
+				registryCAPath = remoteRegistryCAPath
+			}
 		})
 	})
 
@@ -110,7 +121,7 @@ var _ = Describe("Registry custom CA support", Ordered, func() {
 		It("succeeds when RKE2_PATCHER_REGISTRY_CA_FILE is provided", func() {
 			os.Setenv("RKE2_PATCHER_REGISTRY", tlsRegistryURL)
 			defer os.Unsetenv("RKE2_PATCHER_REGISTRY")
-			os.Setenv("RKE2_PATCHER_REGISTRY_CA_FILE", remoteRegistryCAPath)
+			os.Setenv("RKE2_PATCHER_REGISTRY_CA_FILE", registryCAPath)
 			defer os.Unsetenv("RKE2_PATCHER_REGISTRY_CA_FILE")
 
 			output, err := tc.RunImageList("rke2-coredns", false)
@@ -136,6 +147,56 @@ var _ = AfterSuite(func() {
 		_ = tc.Cleanup()
 	}
 })
+
+// mountRegistryCAIntoControllerPod makes the CA file already staged on the node (at
+// remoteRegistryCAPath) available inside the controller pod: it creates a Secret from that file
+// and upgrades the chart to mount it, reusing the rest of the currently deployed values. Not part
+// of testutils because it is only used here. Returns the path to the mounted CA file inside the pod.
+func mountRegistryCAIntoControllerPod(tc *docker.TestConfig) (string, error) {
+	createSecretCmd := fmt.Sprintf(
+		"-n %s create secret generic %s --from-file=ca.crt=%s",
+		controllerPatcherNamespace,
+		controllerRegistryCASecretName,
+		remoteRegistryCAPath,
+	)
+	if out, err := tc.Server.RunKubectl(createSecretCmd); err != nil {
+		return "", fmt.Errorf("failed to create registry CA secret: %s: %w", out, err)
+	}
+
+	valuesContent := fmt.Sprintf(`volumes:
+  - name: registry-ca
+    secret:
+      secretName: %s
+volumeMounts:
+  - name: registry-ca
+    mountPath: %s
+    readOnly: true
+`, controllerRegistryCASecretName, controllerRegistryCAMountDir)
+
+	valuesFile := filepath.Join(tc.TestDir, "registry-ca-values.yaml")
+	if err := os.WriteFile(valuesFile, []byte(valuesContent), 0o600); err != nil {
+		return "", fmt.Errorf("failed to write registry CA values file: %w", err)
+	}
+
+	chartPath := filepath.Join(tc.ProjectRoot, "charts", "rke2-patcher")
+	helmCmd := fmt.Sprintf(
+		"helm upgrade rke2-patcher %q --kubeconfig %q --namespace %s --reuse-values -f %q --wait --timeout 180s",
+		chartPath,
+		tc.KubeconfigFile,
+		controllerPatcherNamespace,
+		valuesFile,
+	)
+	if out, err := docker.RunCommand(helmCmd); err != nil {
+		return "", fmt.Errorf("failed to mount registry CA secret into the controller chart: %s: %w", out, err)
+	}
+
+	rolloutCmd := fmt.Sprintf("-n %s rollout status deployment/rke2-patcher --timeout=180s", controllerPatcherNamespace)
+	if out, err := tc.Server.RunKubectl(rolloutCmd); err != nil {
+		return "", fmt.Errorf("failed waiting for patcher deployment rollout after mounting registry CA: %s: %w", out, err)
+	}
+
+	return controllerRegistryCAMountPath, nil
+}
 
 // startTLSRegistry2 starts a TLS-enabled registry:2. Not part of testutils because it is only used here
 func startTLSRegistry2(tc *docker.TestConfig, tempDir string) (string, string, string, error) {

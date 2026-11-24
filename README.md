@@ -52,7 +52,8 @@ make test-docker-airgap                 # Test airgap deployment
 
 All docker tests support:
 - `EXEC_MODE=binary` (default): run the CLI on the server node; patches are tracked in the `rke2-patcher-state` ConfigMap.
-- `EXEC_MODE=controller`: deploy the chart with the ImagePatch controller; `image-patch` / `image-reconcile` steps are performed through `ImagePatch` objects (create/update, delete), read-only commands run in the patcher pod. `airgap`, `image_cve_local` and `registry_custom_ca` are binary-only. `cli_controller_migration` (CLI and controller in the same cluster) runs in binary mode, and `auto_revert_upgrade` (ImagePatch `upgradePolicy: AutoRevert` across an RKE2 upgrade) in controller mode only.
+- `EXEC_MODE=controller`: deploy the chart with the ImagePatch controller; `image-patch` / `image-reconcile` steps are performed through `ImagePatch` objects (create/update, delete), read-only commands run in the patcher pod. `airgap` and `image_cve_local` are binary-only. `cli_controller_migration` (CLI and controller in the same cluster) runs in binary mode, and `auto_revert_upgrade` (ImagePatch `upgradePolicy: AutoRevert` across an RKE2 upgrade) in controller mode only.
+  `registry_custom_ca` runs in both modes, but reaches the test registry through the Docker bridge gateway (`172.17.0.1`); in controller mode that address is reached from the patcher pod's network namespace via CNI instead of the server container's own namespace, which has not yet been confirmed to behave the same way in every environment.
 
 For airgap tests, specify bundle location:
 ```bash
@@ -255,6 +256,7 @@ kubectl -n rke2-patcher exec deployment/rke2-patcher -- rke2-patcher image-list 
 | `nodeSelector` | `node-role.kubernetes.io/control-plane: "true"` | Where the pod runs. Set to `null` to drop the default selector. |
 | `tolerations` | `[]` | Pod tolerations, e.g. for tainted control-plane nodes. |
 | `affinity` | `{}` | Pod affinity rules. |
+| `volumes` / `volumeMounts` | `[]` / `[]` | Extra volumes and volume mounts, e.g. to mount a Secret containing a custom registry CA certificate. |
 
 Registry settings for a private or mirrored registry go through `env`; credentials can come from a Secret:
 
@@ -270,7 +272,23 @@ env:
       secretKeyRef: {name: rke2-patcher-registry, key: password}
 ```
 
-Current limitations of the chart: it has no `imagePullSecrets` (the nodes must be able to pull the image without them, e.g. via `/etc/rancher/rke2/registries.yaml`), and no volumes, so `RKE2_PATCHER_REGISTRY_CA_FILE` can only point to a file that is already in the image.
+A registry with its own CA needs the certificate mounted from a Secret and `RKE2_PATCHER_REGISTRY_CA_FILE` pointed at the mounted path:
+
+```yaml
+env:
+  - name: RKE2_PATCHER_REGISTRY_CA_FILE
+    value: /etc/rke2-patcher/registry-ca/ca.crt
+volumes:
+  - name: registry-ca
+    secret:
+      secretName: rke2-patcher-registry-ca
+volumeMounts:
+  - name: registry-ca
+    mountPath: /etc/rke2-patcher/registry-ca
+    readOnly: true
+```
+
+Current limitation of the chart: it has no `imagePullSecrets`, so the nodes must be able to pull the `rke2-patcher` image itself without them, e.g. via `/etc/rancher/rke2/registries.yaml`.
 
 #### Using an unreleased build
 

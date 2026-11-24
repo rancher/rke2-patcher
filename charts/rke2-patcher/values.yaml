@@ -24,3 +24,15 @@ nodeSelector:
   node-role.kubernetes.io/control-plane: "true"
 tolerations: []
 affinity: {}
+
+# Extra volumes and volume mounts, e.g. to mount a Secret containing a custom registry CA
+# certificate (then point RKE2_PATCHER_REGISTRY_CA_FILE at the mounted path through env above).
+# Standard Volume/VolumeMount entries.
+volumes: []
+# - name: registry-ca
+#   secret:
+#     secretName: rke2-patcher-registry-ca
+volumeMounts: []
+# - name: registry-ca
+#   mountPath: /etc/rke2-patcher/registry-ca
+#   readOnly: true
