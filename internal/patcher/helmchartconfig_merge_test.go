@@ -230,6 +230,7 @@ func TestMergeHelmChartConfigWithContents_AfterReconcileEmptyValuesContent_Produ
 		"rke2-coredns",
 		"rke2-coredns",
 		"registry.rancher.com/rancher/hardened-coredns",
+		"rancher/hardened-coredns",
 		"v1.14.3-build20260604",
 	)
 

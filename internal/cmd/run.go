@@ -205,7 +205,7 @@ func runImagePatch(component components.Component, options imagePatchOptions) er
 		return err
 	}
 
-	generatedContent, generatedValuesContent := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, currentImageName, targetTagName)
+	generatedContent, generatedValuesContent := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, currentImageName, component.Repository, targetTagName)
 
 	targetName, targetNamespace, err := patcher.HelmChartConfigIdentityFromContent(generatedContent)
 	if err != nil {
