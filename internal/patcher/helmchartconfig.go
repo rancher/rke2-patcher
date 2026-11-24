@@ -20,13 +20,17 @@ const (
 
 // BuildHelmChartConfig generates the file path and content for a HelmChartConfig manifest.
 //
+// imageName is usually derived from the currently running pod rather than componentRepository
+// directly, so a patch never clobbers an image that is already pulled through a mirror; see
+// imageRepositoryWithoutRegistry for how the two are reconciled.
+//
 // The file name is derived from the target HelmChartConfig/chart name rather than the
 // component name so multiple components that patch the same chart (for example
 // `rke2-canal-flannel` and `rke2-canal-calico`) converge on the same manifest file and
 // can be merged on subsequent patch runs.
-func BuildHelmChartConfig(componentName string, defaultChartConfigName string, imageName string, imageTag string) (string, string) {
+func BuildHelmChartConfig(componentName string, defaultChartConfigName string, imageName string, componentRepository string, imageTag string) (string, string) {
 
-	repo := imageRepositoryWithoutRegistry(imageName)
+	repo := imageRepositoryWithoutRegistry(imageName, componentRepository)
 	valuesContent := renderValuesContent(componentName, defaultChartConfigName, repo, imageTag)
 	content := renderHelmChartConfig(defaultChartConfigName, defaultNamespace, valuesContent)
 
@@ -512,7 +516,28 @@ func renderValuesContent(componentName string, chartName string, imageName strin
       tag: %s # change made by rke2-patcher`, imageName, imageTag)
 }
 
-func imageRepositoryWithoutRegistry(imageName string) string {
+// imageRepositoryWithoutRegistry undoes whatever registry prefix a running image may carry,
+// so a patch never bakes one into the HelmChartConfig (the chart, or system-default-registry's
+// own mirroring, is what's responsible for adding it back at render/pull time).
+//
+// componentRepository, the component's known upstream path, is the authoritative source of
+// truth for this: if imageName ends with it, everything before that suffix is the registry
+// prefix, however many segments (host, host:port, host/org, ...) it has. This also makes the
+// result self-healing if a prefix was already baked in by mistake on a previous patch.
+//
+// When imageName does not share that suffix at all - a genuinely renamed/custom mirror, for
+// example - fall back to stripping only a single leading segment that looks like a registry
+// host, which is all a plain "system-default-registry: host[:port]" ever requires.
+func imageRepositoryWithoutRegistry(imageName string, componentRepository string) string {
+	if componentRepository != "" {
+		if imageName == componentRepository {
+			return imageName
+		}
+		if strings.HasSuffix(imageName, "/"+componentRepository) {
+			return componentRepository
+		}
+	}
+
 	parts := strings.Split(imageName, "/")
 	if len(parts) < 2 {
 		return imageName

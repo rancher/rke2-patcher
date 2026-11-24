@@ -24,7 +24,7 @@ spec:
 
 // yaml.v3 decodes integers as int, which runtime.DeepCopyJSON used to panic on
 func TestMergeWithIntegerValues(t *testing.T) {
-	generated, _ := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "rancher/hardened-traefik", "v3.3.6-build20260912")
+	generated, _ := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "rancher/hardened-traefik", "rancher/hardened-traefik", "v3.3.6-build20260912")
 
 	merged, err := MergeHelmChartConfigWithContent(generated, existingWithIntegers)
 	if err != nil {
@@ -38,7 +38,7 @@ func TestMergeWithIntegerValues(t *testing.T) {
 }
 
 func TestSubtractWithIntegerValues(t *testing.T) {
-	generated, generatedValues := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "rancher/hardened-traefik", "v3.3.6-build20260912")
+	generated, generatedValues := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "rancher/hardened-traefik", "rancher/hardened-traefik", "v3.3.6-build20260912")
 	merged, err := MergeHelmChartConfigWithContent(generated, existingWithIntegers)
 	if err != nil {
 		t.Fatalf("merge failed: %v", err)
@@ -65,7 +65,7 @@ func TestMergeIntoEmptyKeepsDeepNesting(t *testing.T) {
 		{"rke2-ingress-nginx", "rke2-ingress-nginx"},
 		{"rke2-snapshot-controller", "rke2-snapshot-controller"},
 	} {
-		generated, generatedValues := BuildHelmChartConfig(component.name, component.chart, "rancher/some-image", "v1.2.3-build20260101")
+		generated, generatedValues := BuildHelmChartConfig(component.name, component.chart, "rancher/some-image", "rancher/some-image", "v1.2.3-build20260101")
 		merged, err := MergeHelmChartConfigWithContent(generated, "")
 		if err != nil {
 			t.Fatalf("%s: merge failed: %v", component.name, err)
@@ -95,7 +95,7 @@ func TestMergeIntoEmptyKeepsDeepNesting(t *testing.T) {
 // which the chart does not read (it reads controller.image.*); the component's pods kept
 // running the bundled tag even though image-patch reported success.
 func TestSnapshotControllerWritesControllerImageNotTopLevelImage(t *testing.T) {
-	generated, _ := BuildHelmChartConfig("rke2-snapshot-controller", "rke2-snapshot-controller", "rancher/hardened-snapshot-controller", "v8.5.0-build20260410")
+	generated, _ := BuildHelmChartConfig("rke2-snapshot-controller", "rke2-snapshot-controller", "rancher/hardened-snapshot-controller", "rancher/hardened-snapshot-controller", "v8.5.0-build20260410")
 
 	hcc, err := parseSingleHelmChartConfig(generated)
 	if err != nil {

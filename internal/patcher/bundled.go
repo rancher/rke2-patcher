@@ -54,7 +54,10 @@ func BundledImageTag(componentName string, chartName string, chartValues map[str
 		return "", err
 	}
 
-	expectedRepository := imageRepositoryWithoutRegistry(repository)
+	// repository is passed as both arguments: it is already the canonical repository (the
+	// caller's own, not a possibly registry-prefixed running image), so there is nothing to
+	// strip a prefix against other than itself.
+	expectedRepository := imageRepositoryWithoutRegistry(repository, repository)
 	bundledTag := ""
 	for _, path := range paths {
 		tag, found := lookupString(chartValues, path)
@@ -64,7 +67,7 @@ func BundledImageTag(componentName string, chartName string, chartValues map[str
 
 		repositoryPath := append(append([]string(nil), path[:len(path)-1]...), "repository")
 		chartRepository, _ := lookupString(chartValues, repositoryPath)
-		if imageRepositoryWithoutRegistry(chartRepository) != expectedRepository {
+		if imageRepositoryWithoutRegistry(chartRepository, repository) != expectedRepository {
 			return "", fmt.Errorf("chart %s sets %s to %q, not %q: the patcher would override another image", chartName, strings.Join(repositoryPath, "."), chartRepository, expectedRepository)
 		}
 

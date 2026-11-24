@@ -65,12 +65,56 @@ func TestBuildHelmChartConfigWithDataDir_GeneratedContentParsesForPatchedCompone
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, valuesContent := BuildHelmChartConfig(tt.componentName, tt.chartName, tt.imageName, tt.imageTag)
+			_, valuesContent := BuildHelmChartConfig(tt.componentName, tt.chartName, tt.imageName, tt.imageName, tt.imageTag)
 
 			if strings.TrimSpace(valuesContent) == "" {
 				t.Fatal("expected non-empty valuesContent, got empty content")
 			}
 		})
+	}
+}
+
+// system-default-registry can prefix a running image's repository with just a bare host
+// (e.g. "registry.rancher.com") or with a host plus extra path segments (e.g.
+// "suse-registry.local:5000/rancher-prime"). BuildHelmChartConfig must always write back the
+// component's own canonical repository, never a registry prefix, however many segments it has
+// or however it got there - including if a previous patch already baked one in by mistake.
+func TestBuildHelmChartConfig_StripsRegistryPrefixFromRepository(t *testing.T) {
+	const componentRepository = "rancher/hardened-traefik"
+
+	tests := []struct {
+		name      string
+		imageName string
+	}{
+		{name: "no prefix", imageName: componentRepository},
+		{name: "bare host prefix", imageName: "registry.rancher.com/" + componentRepository},
+		{name: "host and port prefix", imageName: "suse-registry.local:5000/" + componentRepository},
+		{name: "host with an extra path segment", imageName: "suse-registry.local:5000/rancher-prime/" + componentRepository},
+		{name: "already double-prefixed by a previous bug", imageName: "suse-registry.local:5000/rancher-prime/rancher-prime/" + componentRepository},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, valuesContent := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", tt.imageName, componentRepository, "v3.7.17-build20261110")
+
+			want := "repository: " + componentRepository + " # change made by rke2-patcher"
+			if !strings.Contains(valuesContent, want) {
+				t.Fatalf("expected %q, got:\n%s", want, valuesContent)
+			}
+		})
+	}
+}
+
+// When the running image's repository does not share the component's canonical suffix at all -
+// a genuinely renamed/custom mirror - BuildHelmChartConfig falls back to stripping only a
+// single leading host-looking segment, same as before this function knew about
+// componentRepository.
+func TestBuildHelmChartConfig_FallsBackToHostHeuristicForUnrelatedRepository(t *testing.T) {
+	_, valuesContent := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "myregistry.example.com/myorg/renamed-traefik", "rancher/hardened-traefik", "v3.7.17-build20261110")
+
+	want := "repository: myorg/renamed-traefik # change made by rke2-patcher"
+	if !strings.Contains(valuesContent, want) {
+		t.Fatalf("expected %q, got:\n%s", want, valuesContent)
 	}
 }
 

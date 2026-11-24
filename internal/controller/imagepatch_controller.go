@@ -291,7 +291,7 @@ func (r *Reconciler) reconcilePatch(ctx context.Context, imgPatch *v1alpha1.Imag
 		return r.rolloutOutcomeFor(imgPatch, images, baseline, "AtBaseline", "component runs its bundled tag"), nil
 	}
 
-	generatedContent, generatedValues := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, imageName(component, images), imgPatch.Spec.Tag)
+	generatedContent, generatedValues := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, imageName(component, images), component.Repository, imgPatch.Spec.Tag)
 
 	present, conflicts, err := patcher.CompareGeneratedValues(current.content, generatedValues)
 	if err != nil {
@@ -471,7 +471,10 @@ func (r *Reconciler) revert(component components.Component, current helmChartCon
 		return nil
 	}
 
-	_, values := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, component.Repository, "revert")
+	// component.Repository is passed as both imageName and componentRepository: unlike the
+	// patch path, there is no running pod image to strip a registry prefix from here, so the
+	// canonical repository is the only sensible value for either argument.
+	_, values := patcher.BuildHelmChartConfig(component.Name, component.HelmChartConfigName, component.Repository, component.Repository, "revert")
 	reverted, err := patcher.SubtractPatcherValuesContent(current.content, values)
 	if err != nil {
 		return fmt.Errorf("failed to strip patcher values: %w", err)

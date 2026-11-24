@@ -101,7 +101,7 @@ func TestBundledImageTagMissingPath(t *testing.T) {
 }
 
 func TestHelmChartConfigAnnotations(t *testing.T) {
-	generated, _ := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "rancher/hardened-traefik", "v3.6.12-build20260409")
+	generated, _ := BuildHelmChartConfig("rke2-traefik", "rke2-traefik", "rancher/hardened-traefik", "rancher/hardened-traefik", "v3.6.12-build20260409")
 	merged, err := MergeHelmChartConfigWithContent(generated, existingWithIntegers)
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +140,6 @@ func TestSnapshotControllerValuesMatchChart(t *testing.T) {
 
 func mustValues(t *testing.T, component string, tag string) string {
 	t.Helper()
-	_, values := BuildHelmChartConfig(component, component, "rancher/hardened-traefik", tag)
+	_, values := BuildHelmChartConfig(component, component, "rancher/hardened-traefik", "rancher/hardened-traefik", tag)
 	return values
 }
